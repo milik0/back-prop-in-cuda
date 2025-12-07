@@ -285,3 +285,45 @@ void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss) {
     mse_gradient_kernel<<<blocks, threads>>>(P.data, Y.data, d_loss.data, size);
     CHECK_CUDA(cudaGetLastError());
 }
+
+// -----------------------------------------------------------
+// Softmax Activation (Numerically Stable)
+// -----------------------------------------------------------
+__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < m) {
+        // 1. Find max for stability
+        float max_val = -FLT_MAX;
+        for (int i = 0; i < n; ++i) {
+            if (Z[row * n + i] > max_val) max_val = Z[row * n + i];
+        }
+
+        // 2. Compute exponentials and sum
+        float sum_exp = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            float val = expf(Z[row * n + i] - max_val);
+            A[row * n + i] = val; // Store temporarily
+            sum_exp += val;
+        }
+
+        // 3. Normalize
+        for (int i = 0; i < n; ++i) {
+            A[row * n + i] /= sum_exp;
+        }
+    }
+}
+
+void softmaxActivation(const Matrix& Z, Matrix& A) {
+    int threadsPerBlock = 256;
+    // One thread per ROW (sample), assuming n is small (10 classes)
+    int blocksPerGrid = (Z.rows + threadsPerBlock - 1) / threadsPerBlock;
+    softmax_kernel<<<blocksPerGrid, threadsPerBlock>>>(Z.data, A.data, Z.rows, Z.cols);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// Cross Entropy Gradient: dZ = P - Y
+// If we use Softmax + Cross Entropy, the gradient simplifies to just (Pred - Target)
+// We can reuse the "mse_gradient_kernel" logic or rename it for clarity.
+// -----------------------------------------------------------
+// (You can reuse the kernel you added for MSE, mathematically it's P - Y for both!)

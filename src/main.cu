@@ -1,131 +1,131 @@
 #include "utils.cuh"
 #include "kernels.cuh"
 #include "mlp.cuh"
+#include "mnist.cuh" // The new file
 #include <iostream>
 #include <vector>
 #include <iomanip>
+#include <algorithm> // for std::shuffle
 
-// Helper to calculate MSE on CPU (for logging)
-float calculate_mse_cpu(Matrix& preds, Matrix& target) {
+// Helper: Calculate Accuracy on CPU
+float calculate_accuracy(Matrix& preds, Matrix& targets) {
     std::vector<float> h_p, h_t;
     preds.copyToHost(h_p);
-    target.copyToHost(h_t);
+    targets.copyToHost(h_t);
     
-    float sum_sq_diff = 0.0f;
-    for (size_t i = 0; i < h_p.size(); ++i) {
-        float diff = h_p[i] - h_t[i];
-        sum_sq_diff += diff * diff;
-    }
-    return sum_sq_diff / h_p.size();
-}
+    int hits = 0;
+    int batch_size = preds.rows;
+    int cols = preds.cols; // 10
 
-// Helper to init weights (Xavier/Random)
-void randomize(Matrix& m, float min = -0.5f, float max = 0.5f) {
-    std::vector<float> host_data(m.rows * m.cols);
-    for (size_t i = 0; i < host_data.size(); ++i) {
-        host_data[i] = min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
-    }
-    m.copyFromHost(host_data);
-}
-
-void train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
-    Matrix d_loss;
-    d_loss.allocate(Y.rows, Y.cols);
-
-    std::cout << "Training on XOR (" << epochs << " epochs)...\n";
-    for (int i = 0; i < epochs; ++i) {
-        // Forward
-        Matrix preds = model.forward(X);
-
-        // Log every 1000 steps
-        if (i % 1000 == 0) {
-            float loss = calculate_mse_cpu(preds, Y);
-            std::cout << "Epoch " << std::setw(5) << i << " | Loss: " << loss << std::endl;
+    for (int i = 0; i < batch_size; ++i) {
+        // Find Argmax Prediction
+        int max_p_idx = 0;
+        float max_p_val = h_p[i * cols];
+        for (int j = 1; j < cols; ++j) {
+            if (h_p[i * cols + j] > max_p_val) {
+                max_p_val = h_p[i * cols + j];
+                max_p_idx = j;
+            }
         }
 
-        // Backward
-        computeMSEGradient(preds, Y, d_loss);
-        model.backward(d_loss, lr);
+        // Find Argmax Target
+        int max_t_idx = 0;
+        float max_t_val = h_t[i * cols];
+        for (int j = 1; j < cols; ++j) {
+            if (h_t[i * cols + j] > max_t_val) {
+                max_t_val = h_t[i * cols + j];
+                max_t_idx = j;
+            }
+        }
+
+        if (max_p_idx == max_t_idx) hits++;
     }
-    d_loss.free();
+    return (float)hits / batch_size;
+}
+
+// Helper to init weights (Xavier Initialization is better for Deep Nets)
+void init_xavier(Matrix& m) {
+    float scale = sqrt(2.0f / m.rows);
+    std::vector<float> host_data(m.rows * m.cols);
+    for (size_t i = 0; i < host_data.size(); ++i) {
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // 0 to 1
+        host_data[i] = (r * 2.0f - 1.0f) * scale;
+    }
+    m.copyFromHost(host_data);
 }
 
 int main() {
     srand(1337); 
 
-    // ==========================================
-    // 1. Define XOR Dataset
-    // ==========================================
-    int batch_size = 4;
-    int input_dim = 2;
-    int hidden_dim = 8; // Enough neurons to solve XOR
-    int output_dim = 1; // Output probability (0 or 1)
+    // 1. Load MNIST Data
+    // Ensure you have these files in a "data" folder!
+    std::cout << "Loading MNIST Data...\n";
+    Matrix full_X, full_Y;
+    int N_SAMPLES = 60000; // Load all training samples
+    loadMNIST("data/train-images-idx3-ubyte", "data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
 
-    // Inputs: (0,0), (0,1), (1,0), (1,1)
-    std::vector<float> h_X = {
-        0.0f, 0.0f,
-        0.0f, 1.0f,
-        1.0f, 0.0f,
-        1.0f, 1.0f
-    };
-
-    // Targets: 0, 1, 1, 0
-    std::vector<float> h_Y = {
-        0.0f,
-        1.0f,
-        1.0f,
-        0.0f
-    };
-
-    Matrix d_X, d_Y;
-    d_X.allocate(batch_size, input_dim);
-    d_Y.allocate(batch_size, output_dim);
-    
-    // Copy data to GPU
-    d_X.copyFromHost(h_X);
-    d_Y.copyFromHost(h_Y);
-
-    // ==========================================
-    // 2. Build Model
-    // ==========================================
+    // 2. Build Model (784 -> 256 -> 10)
     MLP model;
     
-    // Layer 1: 2 -> 8 (ReLU)
-    Linear* fc1 = new Linear(input_dim, hidden_dim);
-    randomize(fc1->W); randomize(fc1->b);
+    // Layer 1
+    Linear* fc1 = new Linear(784, 256);
+    init_xavier(fc1->W); fc1->b.zeros();
     model.add(fc1);
     
     model.add(new ReLU());
 
-    // Layer 2: 8 -> 1 (Linear output for now)
-    // Note: Usually we'd use Sigmoid here for 0-1, but linear works with MSE for this demo
-    Linear* fc2 = new Linear(hidden_dim, output_dim);
-    randomize(fc2->W); randomize(fc2->b);
+    // Layer 2 (Output)
+    Linear* fc2 = new Linear(256, 10);
+    init_xavier(fc2->W); fc2->b.zeros();
     model.add(fc2);
 
-    // ==========================================
-    // 3. Train
-    // ==========================================
-    train(model, d_X, d_Y, 10000, 0.1f);
+    // Final Activation & Loss
+    model.add(new SoftmaxCrossEntropy());
 
-    // ==========================================
-    // 4. Verify Results
-    // ==========================================
-    std::cout << "\n=== Final Predictions ===\n";
-    Matrix final_preds = model.forward(d_X);
-    
-    std::vector<float> res;
-    final_preds.copyToHost(res);
-    // Add this header at the top
-    std::cout << std::fixed << std::setprecision(9); // Force 9 decimal places
+    // 3. Mini-Batch Training Loop
+    int batch_size = 64;
+    int epochs = 5;
+    float learning_rate = 0.01f;
+    int num_batches = N_SAMPLES / batch_size;
 
-    std::cout << "Input (0, 0) -> Pred: " << res[0] << " (Target: 0)\n";
-    std::cout << "Input (0, 1) -> Pred: " << res[1] << " (Target: 1)\n";
-    std::cout << "Input (1, 0) -> Pred: " << res[2] << " (Target: 1)\n";
-    std::cout << "Input (1, 1) -> Pred: " << res[3] << " (Target: 0)\n";
+    Matrix batch_X, batch_Y;
+    batch_X.allocate(batch_size, 784);
+    batch_Y.allocate(batch_size, 10);
+
+    std::cout << "Starting Training (" << epochs << " epochs, batch size " << batch_size << ")...\n";
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        float total_acc = 0.0f;
+
+        for (int b = 0; b < num_batches; ++b) {
+            // Slice Batch (Copy from full dataset to batch matrix)
+            // Note: This copying is slow (D->H->D) usually, but for simplicity we do it here.
+            // A kernel "slice" copy would be faster.
+            CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
+                                  batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
+            CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
+                                  batch_size * 10 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+            // Forward
+            Matrix preds = model.forward(batch_X);
+
+            // Backward
+            // For SoftmaxCrossEntropy, the "backward" takes the LABELS, not d_loss
+            model.backward(batch_Y, learning_rate);
+
+            // Logging
+            if (b % 100 == 0) {
+                 float acc = calculate_accuracy(preds, batch_Y);
+                 // std::cout << "Epoch " << epoch << " Batch " << b << " Acc: " << acc << "\r" << std::flush;
+            }
+            total_acc += calculate_accuracy(preds, batch_Y);
+        }
+        std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" << std::endl;
+    }
 
     // Cleanup
-    d_X.free(); d_Y.free();
+    full_X.free(); full_Y.free();
+    batch_X.free(); batch_Y.free();
 
     return 0;
 }

@@ -123,3 +123,31 @@ public:
         return d_input;
     }
 };
+
+class SoftmaxCrossEntropy : public Layer {
+public:
+    Matrix output;
+    Matrix d_input;
+
+    ~SoftmaxCrossEntropy() { output.free(); d_input.free(); }
+
+    Matrix forward(const Matrix& input) override {
+        if (!output.allocated) output.allocate(input.rows, input.cols);
+        softmaxActivation(input, output);
+        return output;
+    }
+
+    Matrix backward(const Matrix& target_labels, float learning_rate) override {
+        // For Softmax + CrossEntropy, the gradient passed to the previous layer
+        // is simply: (Prediction - Target)
+        // Here, 'target_labels' acts as the ground truth Y.
+        
+        if (!d_input.allocated) d_input.allocate(target_labels.rows, target_labels.cols);
+        
+        // We reuse the subtract kernel: d_input = output - target_labels
+        // You might need to expose a generic "subtract" kernel or use the MSE one
+        computeMSEGradient(output, target_labels, d_input); 
+        
+        return d_input;
+    }
+};
