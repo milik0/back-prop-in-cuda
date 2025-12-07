@@ -62,7 +62,7 @@ int main() {
     std::cout << "Loading MNIST Data...\n";
     Matrix full_X, full_Y;
     int N_SAMPLES = 60000; // Load all training samples
-    loadMNIST("data/train-images-idx3-ubyte", "data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
+    loadMNIST("~/data/train-images-idx3-ubyte", "~/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
 
     // 2. Build Model (784 -> 256 -> 10)
     MLP model;
