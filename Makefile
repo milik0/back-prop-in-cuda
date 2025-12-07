@@ -19,17 +19,36 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu
 	@mkdir -p $(OBJ_DIR)
 	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
 
-xor: SRC = $(SRC_DIR)/main_xor.cu $(SRC_DIR)/kernels.cu
-xor: OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRC))
-xor: TARGET = $(BIN_DIR)/mlp_xor_test
 xor: $(BIN_DIR)/mlp_xor_test
-    @echo "Building MLP XOR Test..."
-    @echo $(TARGET)
-    ./$(TARGET)
+	@echo "Building MLP XOR Test..."
+	./$(BIN_DIR)/mlp_xor_test
 
-$(BIN_DIR)/mlp_xor_test: $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRC_DIR)/main_xor.cu $(SRC_DIR)/kernels.cu)
-    @mkdir -p $(BIN_DIR)
-    $(NVCC) $(NVCC_FLAGS) -o $@ $^
+$(BIN_DIR)/mlp_xor_test: $(OBJ_DIR)/main_xor.o $(OBJ_DIR)/kernels.o
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
+
+# Benchmark targets
+benchmark-mnist: $(TARGET)
+	@echo "Running MNIST benchmark..."
+	cd benchmark && python3 benchmark_mnist.py
+
+benchmark-xor: $(BIN_DIR)/mlp_xor_test
+	@echo "Running XOR benchmark..."
+	cd benchmark && python3 benchmark_xor.py
+
+benchmark-all: $(TARGET) $(BIN_DIR)/mlp_xor_test
+	@echo "Running all benchmarks..."
+	cd benchmark && python3 benchmark_mnist.py
+	cd benchmark && python3 benchmark_xor.py
+	cd benchmark && python3 visualize.py
+
+benchmark-visualize:
+	@echo "Generating visualizations..."
+	cd benchmark && python3 visualize.py
+
+benchmark-setup:
+	@echo "Installing Python dependencies for benchmarks..."
+	pip3 install -r benchmark/requirements.txt
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
