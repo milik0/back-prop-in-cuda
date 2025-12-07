@@ -3,19 +3,9 @@
 #include "mlp.cuh"
 #include <iostream>
 #include <vector>
-#include <random>
-#include <iomanip> // For std::setw
+#include <iomanip>
 
-// Helper: Initialize random matrix
-void randomize(Matrix& m, float min = -0.5f, float max = 0.5f) {
-    std::vector<float> host_data(m.rows * m.cols);
-    for (size_t i = 0; i < host_data.size(); ++i) {
-        host_data[i] = min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
-    }
-    m.copyFromHost(host_data);
-}
-
-// Helper: Calculate MSE on CPU (for logging only)
+// Helper to calculate MSE on CPU (for logging)
 float calculate_mse_cpu(Matrix& preds, Matrix& target) {
     std::vector<float> h_p, h_t;
     preds.copyToHost(h_p);
@@ -29,77 +19,111 @@ float calculate_mse_cpu(Matrix& preds, Matrix& target) {
     return sum_sq_diff / h_p.size();
 }
 
-// ==========================================
-// The Training Loop
-// ==========================================
+// Helper to init weights (Xavier/Random)
+void randomize(Matrix& m, float min = -0.5f, float max = 0.5f) {
+    std::vector<float> host_data(m.rows * m.cols);
+    for (size_t i = 0; i < host_data.size(); ++i) {
+        host_data[i] = min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+    }
+    m.copyFromHost(host_data);
+}
+
 void train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
     Matrix d_loss;
     d_loss.allocate(Y.rows, Y.cols);
 
-    std::cout << "Starting Training (" << epochs << " epochs)...\n";
-
+    std::cout << "Training on XOR (" << epochs << " epochs)...\n";
     for (int i = 0; i < epochs; ++i) {
-        // 1. Forward
+        // Forward
         Matrix preds = model.forward(X);
 
-        // 2. Log Progress (every 100 epochs)
-        if (i % 100 == 0) {
+        // Log every 1000 steps
+        if (i % 1000 == 0) {
             float loss = calculate_mse_cpu(preds, Y);
-            std::cout << "Epoch " << std::setw(4) << i << " | MSE Loss: " << loss << std::endl;
+            std::cout << "Epoch " << std::setw(5) << i << " | Loss: " << loss << std::endl;
         }
 
-        // 3. Compute Gradient (d_loss = Preds - Y)
+        // Backward
         computeMSEGradient(preds, Y, d_loss);
-
-        // 4. Backward & Update
         model.backward(d_loss, lr);
     }
-    
-    // Final Loss
-    Matrix final_preds = model.forward(X);
-    std::cout << "Final Epoch | MSE Loss: " << calculate_mse_cpu(final_preds, Y) << std::endl;
-
     d_loss.free();
 }
 
 int main() {
-    srand(1337);
+    srand(1337); 
 
-    // --- 1. Data Setup ---
-    int batch_size = 4; // Using 4 samples
-    int input_dim = 3;
-    int hidden_dim = 16;
-    int output_dim = 2;
+    // ==========================================
+    // 1. Define XOR Dataset
+    // ==========================================
+    int batch_size = 4;
+    int input_dim = 2;
+    int hidden_dim = 8; // Enough neurons to solve XOR
+    int output_dim = 1; // Output probability (0 or 1)
+
+    // Inputs: (0,0), (0,1), (1,0), (1,1)
+    std::vector<float> h_X = {
+        0.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 0.0f,
+        1.0f, 1.0f
+    };
+
+    // Targets: 0, 1, 1, 0
+    std::vector<float> h_Y = {
+        0.0f,
+        1.0f,
+        1.0f,
+        0.0f
+    };
 
     Matrix d_X, d_Y;
     d_X.allocate(batch_size, input_dim);
     d_Y.allocate(batch_size, output_dim);
     
-    randomize(d_X); // Random Inputs
-    randomize(d_Y); // Random Targets (we want the network to memorize these)
+    // Copy data to GPU
+    d_X.copyFromHost(h_X);
+    d_Y.copyFromHost(h_Y);
 
-    // --- 2. Model Setup ---
+    // ==========================================
+    // 2. Build Model
+    // ==========================================
     MLP model;
     
-    // Layer 1
+    // Layer 1: 2 -> 8 (ReLU)
     Linear* fc1 = new Linear(input_dim, hidden_dim);
     randomize(fc1->W); randomize(fc1->b);
     model.add(fc1);
     
     model.add(new ReLU());
 
-    // Layer 2
+    // Layer 2: 8 -> 1 (Linear output for now)
+    // Note: Usually we'd use Sigmoid here for 0-1, but linear works with MSE for this demo
     Linear* fc2 = new Linear(hidden_dim, output_dim);
     randomize(fc2->W); randomize(fc2->b);
     model.add(fc2);
 
-    // --- 3. Run Training ---
-    // High learning rate because we haven't normalized inputs
-    train(model, d_X, d_Y, 1000, 0.01f); 
+    // ==========================================
+    // 3. Train
+    // ==========================================
+    train(model, d_X, d_Y, 10000, 0.1f);
 
-    // --- 4. Cleanup ---
-    d_X.free();
-    d_Y.free();
+    // ==========================================
+    // 4. Verify Results
+    // ==========================================
+    std::cout << "\n=== Final Predictions ===\n";
+    Matrix final_preds = model.forward(d_X);
+    
+    std::vector<float> res;
+    final_preds.copyToHost(res);
+
+    std::cout << "Input (0, 0) -> Pred: " << res[0] << " (Target: 0)\n";
+    std::cout << "Input (0, 1) -> Pred: " << res[1] << " (Target: 1)\n";
+    std::cout << "Input (1, 0) -> Pred: " << res[2] << " (Target: 1)\n";
+    std::cout << "Input (1, 1) -> Pred: " << res[3] << " (Target: 0)\n";
+
+    // Cleanup
+    d_X.free(); d_Y.free();
 
     return 0;
 }
