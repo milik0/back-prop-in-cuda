@@ -266,3 +266,22 @@ void updateWeights(Matrix& W, const Matrix& dW, float lr) {
     update_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(W.data, dW.data, lr, size);
     CHECK_CUDA(cudaGetLastError());
 }
+
+// -----------------------------------------------------------
+// 6. MSE Gradient: d_loss = Prediction - Target
+// -----------------------------------------------------------
+__global__ void mse_gradient_kernel(const float* P, const float* Y, float* d_loss, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        // Derivative of MSE (ignoring 2/N scaling for simplicity)
+        d_loss[idx] = P[idx] - Y[idx];
+    }
+}
+
+void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss) {
+    int size = P.rows * P.cols;
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    mse_gradient_kernel<<<blocks, threads>>>(P.data, Y.data, d_loss.data, size);
+    CHECK_CUDA(cudaGetLastError());
+}

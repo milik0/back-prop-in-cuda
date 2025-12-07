@@ -34,3 +34,6 @@ void reluBackward(const Matrix& dY, const Matrix& Z, Matrix& dX);
 
 // Update: W = W - lr * dW
 void updateWeights(Matrix& W, const Matrix& dW, float lr);
+
+// Computes gradient for MSE: d_loss = P - Y
+void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss);
