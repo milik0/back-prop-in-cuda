@@ -22,6 +22,8 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu
 xor: SRC = $(SRC_DIR)/main_xor.cu $(SRC_DIR)/kernels.cu
 xor: OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRC))
 xor: TARGET = $(BIN_DIR)/mlp_xor_test
+xor: @echo "Building MLP XOR Test..."
+	 @echo ${TARGET}
 xor: ./$(TARGET)
 
 clean:
