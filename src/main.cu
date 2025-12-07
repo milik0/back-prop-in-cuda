@@ -116,6 +116,8 @@ int main() {
     
     std::vector<float> res;
     final_preds.copyToHost(res);
+    // Add this header at the top
+    std::cout << std::fixed << std::setprecision(9); // Force 9 decimal places
 
     std::cout << "Input (0, 0) -> Pred: " << res[0] << " (Target: 0)\n";
     std::cout << "Input (0, 1) -> Pred: " << res[1] << " (Target: 1)\n";
