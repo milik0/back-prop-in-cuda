@@ -86,7 +86,7 @@ void reluActivation(const Matrix& Z, Matrix& A) {
 
 // CUDA Kernel for Softmax (Naive implementation)
 // This is not optimized. Optimized version would use shared memory reductions.
-__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
+/*__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
     if (row < m) {
         // 1. Find max for stability
@@ -107,7 +107,7 @@ __global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
             A[row * n + i] = expf(Z[row * n + i] - max_val) / sum_exp;
         }
     }
-}
+}*/
 
 void softmaxActivation(const Matrix& Z, Matrix& A) {
     if (Z.rows != A.rows || Z.cols != A.cols) {
