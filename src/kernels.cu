@@ -266,18 +266,3 @@ void updateWeights(Matrix& W, const Matrix& dW, float lr) {
     update_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(W.data, dW.data, lr, size);
     CHECK_CUDA(cudaGetLastError());
 }
-
-__global__ void update_weights_kernel(float* W, const float* dW, float lr, int size) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < size) {
-        W[idx] -= lr * dW[idx];
-    }
-}
-
-void updateWeights(Matrix& W, const Matrix& dW, float lr) {
-    int size = W.rows * W.cols;
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
-    update_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(W.data, dW.data, lr, size);
-    CHECK_CUDA(cudaGetLastError());
-}

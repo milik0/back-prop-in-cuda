@@ -37,12 +37,6 @@ public:
     ~Linear() {
         W.free(); b.free();
         dW.free(); db.free();
-        input_cache.free(); // We don't own the data of input_cache generally, 
-                            // but if we made a copy we would free it. 
-                            // *Correction*: We usually point to previous layer's data or copy it. 
-                            // For safety in CUDA, let's assume we don't own input_cache's pointer 
-                            // unless we explicitly allocated a copy. Here we just store dimensions/pointer 
-                            // usually, but simpler to just store the Matrix struct.
         output.free();
         d_input.free();
     }
@@ -107,7 +101,10 @@ public:
     Matrix output;
     Matrix d_input;
 
-    ~ReLU() { output.free(); d_input.free(); }
+    ~ReLU() {
+        output.free();
+        d_input.free();
+    }
 
     Matrix forward(const Matrix& input) override {
         input_cache = input;
