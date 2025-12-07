@@ -121,3 +121,209 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
     softmax_kernel<<<blocksPerGrid, threadsPerBlock>>>(Z.data, A.data, Z.rows, Z.cols);
     CHECK_CUDA(cudaGetLastError());
 }
+
+// -----------------------------------------------------------
+// 1. Matrix Multiplication with Transpose A: C = A^T * B
+// Used for: dW = X^T * dZ
+// Dimensions: A is (m x k), B is (m x n), C is (k x n)
+// Note: Inner dimension for mult is 'm' (rows of A, rows of B)
+// -----------------------------------------------------------
+__global__ void matmul_transposeA_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
+    // We are computing C[row, col] where row is in [0, k) and col in [0, n)
+    int row = blockIdx.y * blockDim.y + threadIdx.y; // range: 0 to k-1
+    int col = blockIdx.x * blockDim.x + threadIdx.x; // range: 0 to n-1
+
+    if (row < k && col < n) {
+        float sum = 0.0f;
+        // Dot product of (row-th row of A^T) and (col-th col of B)
+        // (row-th row of A^T) is (row-th col of A)
+        // We iterate over the common dimension 'm'
+        for (int i = 0; i < m; ++i) {
+            // A is accessed as A[i * k + row] because we want column 'row' at row 'i'
+            // B is accessed as B[i * n + col]
+            sum += A[i * k + row] * B[i * n + col];
+        }
+        C[row * n + col] = sum;
+    }
+}
+
+void matrixMultiplyTransposeA(const Matrix& A, const Matrix& B, Matrix& C) {
+    // A: m x k (we treat as k x m), B: m x n
+    // Output C: k x n
+    // Validation: A.rows must match B.rows for (A^T * B) to work
+    if (A.rows != B.rows) {
+        std::cerr << "Error: Dimension mismatch for TransposeA Mult." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    
+    // Grid dimensions based on Output C (k x n)
+    dim3 blockDim(16, 16);
+    dim3 gridDim((C.cols + blockDim.x - 1) / blockDim.x, (C.rows + blockDim.y - 1) / blockDim.y);
+
+    matmul_transposeA_kernel<<<gridDim, blockDim>>>(A.data, B.data, C.data, A.rows, A.cols, B.cols);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// 2. Matrix Multiplication with Transpose B: C = A * B^T
+// Used for: d_input = dZ * W^T
+// Dimensions: A is (m x k), B is (n x k), C is (m x n)
+// Note: Inner dimension is 'k' (cols of A, cols of B)
+// -----------------------------------------------------------
+__global__ void matmul_transposeB_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y; // range: 0 to m-1
+    int col = blockIdx.x * blockDim.x + threadIdx.x; // range: 0 to n-1
+
+    if (row < m && col < n) {
+        float sum = 0.0f;
+        // Dot product of (row-th row of A) and (col-th col of B^T)
+        // (col-th col of B^T) is (col-th row of B)
+        for (int i = 0; i < k; ++i) {
+            // A[row][i] * B[col][i]
+            sum += A[row * k + i] * B[col * k + i];
+        }
+        C[row * n + col] = sum;
+    }
+}
+
+void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
+    // A: m x k, B: n x k (treated as k x n)
+    // Output C: m x n
+    if (A.cols != B.cols) {
+        std::cerr << "Error: Dimension mismatch for TransposeB Mult." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    dim3 blockDim(16, 16);
+    dim3 gridDim((C.cols + blockDim.x - 1) / blockDim.x, (C.rows + blockDim.y - 1) / blockDim.y);
+
+    matmul_transposeB_kernel<<<gridDim, blockDim>>>(A.data, B.data, C.data, A.rows, A.cols, B.rows);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// 3. Bias Gradient: db = sum(dZ, axis=0)
+// Collapses batch dimension. 
+// A naive implementation using atomicAdd for simplicity.
+// For production, use parallel reduction.
+// -----------------------------------------------------------
+__global__ void bias_grad_kernel(const float* dZ, float* db, int m, int n) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (row < m && col < n) {
+        // Each thread handles one element of dZ and adds it to the corresponding bias
+        atomicAdd(&db[col], dZ[row * n + col]);
+    }
+}
+
+void computeBiasGradient(const Matrix& dY, Matrix& db) {
+    // Initialize db to zero first!
+    db.zeros();
+
+    dim3 blockDim(16, 16);
+    dim3 gridDim((dY.cols + blockDim.x - 1) / blockDim.x, (dY.rows + blockDim.y - 1) / blockDim.y);
+    
+    bias_grad_kernel<<<gridDim, blockDim>>>(dY.data, db.data, dY.rows, dY.cols);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// 4. ReLU Backward: dX = dY * (Z > 0 ? 1 : 0)
+// Element-wise multiplication with derivative
+// -----------------------------------------------------------
+__global__ void relu_backward_kernel(const float* dY, const float* Z, float* dX, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        dX[idx] = (Z[idx] > 0.0f) ? dY[idx] : 0.0f;
+    }
+}
+
+void reluBackward(const Matrix& dY, const Matrix& Z, Matrix& dX) {
+    int size = dY.rows * dY.cols;
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+    
+    relu_backward_kernel<<<blocksPerGrid, threadsPerBlock>>>(dY.data, Z.data, dX.data, size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// 5. Update Weights: W = W - lr * dW
+// -----------------------------------------------------------
+__global__ void update_weights_kernel(float* W, const float* dW, float lr, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        W[idx] -= lr * dW[idx];
+    }
+}
+
+void updateWeights(Matrix& W, const Matrix& dW, float lr) {
+    int size = W.rows * W.cols;
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+    
+    update_weights_kernel<<<blocksPerGrid, threadsPerBlock>>>(W.data, dW.data, lr, size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// 6. MSE Gradient: d_loss = Prediction - Target
+// -----------------------------------------------------------
+__global__ void mse_gradient_kernel(const float* P, const float* Y, float* d_loss, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        // Derivative of MSE (ignoring 2/N scaling for simplicity)
+        d_loss[idx] = P[idx] - Y[idx];
+    }
+}
+
+void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss) {
+    int size = P.rows * P.cols;
+    int threads = 256;
+    int blocks = (size + threads - 1) / threads;
+    mse_gradient_kernel<<<blocks, threads>>>(P.data, Y.data, d_loss.data, size);
+    CHECK_CUDA(cudaGetLastError());
+}
+
+// -----------------------------------------------------------
+// Softmax Activation (Numerically Stable)
+// -----------------------------------------------------------
+/*__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < m) {
+        // 1. Find max for stability
+        float max_val = -FLT_MAX;
+        for (int i = 0; i < n; ++i) {
+            if (Z[row * n + i] > max_val) max_val = Z[row * n + i];
+        }
+
+        // 2. Compute exponentials and sum
+        float sum_exp = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            float val = expf(Z[row * n + i] - max_val);
+            A[row * n + i] = val; // Store temporarily
+            sum_exp += val;
+        }
+
+        // 3. Normalize
+        for (int i = 0; i < n; ++i) {
+            A[row * n + i] /= sum_exp;
+        }
+    }
+}*/
+
+// void softmaxActivation(const Matrix& Z, Matrix& A) {
+//     int threadsPerBlock = 256;
+//     // One thread per ROW (sample), assuming n is small (10 classes)
+//     int blocksPerGrid = (Z.rows + threadsPerBlock - 1) / threadsPerBlock;
+//     softmax_kernel<<<blocksPerGrid, threadsPerBlock>>>(Z.data, A.data, Z.rows, Z.cols);
+//     CHECK_CUDA(cudaGetLastError());
+// }
+
+// -----------------------------------------------------------
+// Cross Entropy Gradient: dZ = P - Y
+// If we use Softmax + Cross Entropy, the gradient simplifies to just (Pred - Target)
+// We can reuse the "mse_gradient_kernel" logic or rename it for clarity.
+// -----------------------------------------------------------
+// (You can reuse the kernel you added for MSE, mathematically it's P - Y for both!)

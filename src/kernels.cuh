@@ -19,3 +19,21 @@ void reluActivation(const Matrix& Z, Matrix& A);
 // Softmax Activation (for output layer usually)
 // Applied row-wise
 void softmaxActivation(const Matrix& Z, Matrix& A);
+
+// Computes C = A^T * B
+void matrixMultiplyTransposeA(const Matrix& A, const Matrix& B, Matrix& C);
+
+// Computes C = A * B^T
+void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C);
+
+// Computes gradient of bias (sums rows of dY)
+void computeBiasGradient(const Matrix& dY, Matrix& db);
+
+// Computes backprop for ReLU: dX = dY * (Z > 0)
+void reluBackward(const Matrix& dY, const Matrix& Z, Matrix& dX);
+
+// Update: W = W - lr * dW
+void updateWeights(Matrix& W, const Matrix& dW, float lr);
+
+// Computes gradient for MSE: d_loss = P - Y
+void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss);

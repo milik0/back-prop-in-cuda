@@ -1,80 +1,149 @@
 #include "utils.cuh"
 #include "kernels.cuh"
+#include "mlp.cuh"
+#include "mnist.cuh" // The new file
 #include <iostream>
 #include <vector>
+#include <iomanip>
+#include <algorithm> // for std::shuffle
 
-void printMatrix(const std::vector<float>& data, int rows, int cols, const char* name) {
-    std::cout << name << ":\n";
-    for (int i = 0; i < rows; ++i) {
-        for (int j = 0; j < cols; ++j) {
-            std::cout << data[i * cols + j] << " ";
+// Helper: Calculate Accuracy on CPU
+float calculate_accuracy(Matrix& preds, Matrix& targets) {
+    std::vector<float> h_p, h_t;
+    preds.copyToHost(h_p);
+    targets.copyToHost(h_t);
+    
+    int hits = 0;
+    int batch_size = preds.rows;
+    int cols = preds.cols; // 10
+
+    for (int i = 0; i < batch_size; ++i) {
+        // Find Argmax Prediction
+        int max_p_idx = 0;
+        float max_p_val = h_p[i * cols];
+        for (int j = 1; j < cols; ++j) {
+            if (h_p[i * cols + j] > max_p_val) {
+                max_p_val = h_p[i * cols + j];
+                max_p_idx = j;
+            }
         }
-        std::cout << "\n";
+
+        // Find Argmax Target
+        int max_t_idx = 0;
+        float max_t_val = h_t[i * cols];
+        for (int j = 1; j < cols; ++j) {
+            if (h_t[i * cols + j] > max_t_val) {
+                max_t_val = h_t[i * cols + j];
+                max_t_idx = j;
+            }
+        }
+
+        if (max_p_idx == max_t_idx) hits++;
     }
-    std::cout << "\n";
+    return (float)hits / batch_size;
+}
+
+// Helper to init weights (Xavier Initialization is better for Deep Nets)
+void init_xavier(Matrix& m) {
+    float scale = sqrt(2.0f / m.rows);
+    std::vector<float> host_data(m.rows * m.cols);
+    for (size_t i = 0; i < host_data.size(); ++i) {
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX); // 0 to 1
+        host_data[i] = (r * 2.0f - 1.0f) * scale;
+    }
+    m.copyFromHost(host_data);
 }
 
 int main() {
-    // Dimensions
-    int batch_size = 2;
-    int input_features = 3;
-    int output_features = 2;
+    srand(1337); 
 
-    // Host Data
-    std::vector<float> h_X = {1.0f, 2.0f, 3.0f,  // Sample 1
-                              4.0f, 5.0f, 6.0f}; // Sample 2
+    // 1. Load MNIST Data
+    // Ensure you have these files in a "data" folder!
+    std::cout << "Loading MNIST Data...\n";
+    Matrix full_X, full_Y;
+    int N_SAMPLES = 60000; // Load all training samples
+    loadMNIST("/home/khaled.mili/data/train-images-idx3-ubyte", "/home/khaled.mili/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
+
+    // 2. Build Model (784 -> 256 -> 10)
+    MLP model;
     
-    std::vector<float> h_W = {0.1f, 0.2f,
-                              0.3f, 0.4f,
-                              0.5f, 0.6f}; // 3x2 Matrix
+    // Layer 1
+    Linear* fc1 = new Linear(784, 256);
+    init_xavier(fc1->W); fc1->b.zeros();
+    model.add(fc1);
     
-    std::vector<float> h_b = {0.1f, 0.2f}; // Bias for 2 outputs
+    model.add(new ReLU());
 
-    // Device Matrices
-    Matrix d_X, d_W, d_b, d_Z, d_A;
-    d_X.allocate(batch_size, input_features);
-    d_W.allocate(input_features, output_features);
-    d_b.allocate(1, output_features);
-    d_Z.allocate(batch_size, output_features);
-    d_A.allocate(batch_size, output_features);
+    // Layer 2 (Output)
+    Linear* fc2 = new Linear(256, 10);
+    init_xavier(fc2->W); fc2->b.zeros();
+    model.add(fc2);
 
-    // Copy to Device
-    d_X.copyFromHost(h_X);
-    d_W.copyFromHost(h_W);
-    d_b.copyFromHost(h_b);
+    // Final Activation & Loss
+    model.add(new SoftmaxCrossEntropy());
 
-    // 1. Linear Forward: Z = X * W
-    matrixMultiply(d_X, d_W, d_Z);
+    // 3. Mini-Batch Training Loop
+    int batch_size = 64;
+    int epochs = 5;
+    float learning_rate = 0.01f;
+    int num_batches = N_SAMPLES / batch_size;
+
+    Matrix batch_X, batch_Y;
+    batch_X.allocate(batch_size, 784);
+    batch_Y.allocate(batch_size, 10);
+
+    std::cout << "Starting Training (" << epochs << " epochs, batch size " << batch_size << ")...\n";
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        float total_acc = 0.0f;
+
+        for (int b = 0; b < num_batches; ++b) {
+            // Slice Batch (Copy from full dataset to batch matrix)
+            // Note: This copying is slow (D->H->D) usually, but for simplicity we do it here.
+            // A kernel "slice" copy would be faster.
+            CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
+                                  batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
+            CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
+                                  batch_size * 10 * sizeof(float), cudaMemcpyDeviceToDevice));
+
+            // Forward
+            Matrix preds = model.forward(batch_X);
+
+            // Backward
+            // For SoftmaxCrossEntropy, the "backward" takes the LABELS, not d_loss
+            model.backward(batch_Y, learning_rate);
+
+            // Logging
+            if (b % 100 == 0) {
+                 float acc = calculate_accuracy(preds, batch_Y);
+                 // std::cout << "Epoch " << epoch << " Batch " << b << " Acc: " << acc << "\r" << std::flush;
+            }
+            total_acc += calculate_accuracy(preds, batch_Y);
+        }
+        std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" << std::endl;
+    }
+
+    std::cout << "\n=== Final Evaluation on Test Set ===\n";
     
-    // 2. Add Bias: Z = Z + b
-    addBias(d_Z, d_b);
+    // 1. Load Test Data
+    Matrix test_X, test_Y;
+    int N_TEST_SAMPLES = 10000;
+    loadMNIST("/home/khaled.mili/data/t10k-images-idx3-ubyte", "/home/khaled.mili/data/t10k-labels-idx1-ubyte", test_X, test_Y, N_TEST_SAMPLES);
 
-    // Copy back to check Linear result
-    std::vector<float> h_Z;
-    d_Z.copyToHost(h_Z);
-    printMatrix(h_Z, batch_size, output_features, "Linear Output (Z)");
+    // 2. Run Inference (Forward Pass only)
+    // We process in one giant batch since 10k fits easily in GPU memory usually.
+    // If you run out of memory, split this like the training loop.
+    Matrix test_preds = model.forward(test_X);
 
-    // 3. Activation: A = ReLU(Z)
-    // Let's modify Z to have some negative values to test ReLU
-    // But for now, let's just run it.
-    reluActivation(d_Z, d_A);
+    // 3. Calculate Accuracy
+    float test_acc = calculate_accuracy(test_preds, test_Y);
+    std::cout << "Test Set Accuracy: " << test_acc * 100.0f << "%" << std::endl;
 
-    // Copy back
-    std::vector<float> h_A;
-    d_A.copyToHost(h_A);
-    printMatrix(h_A, batch_size, output_features, "ReLU Output (A)");
-
-    // 4. Softmax
-    softmaxActivation(d_Z, d_A);
-    d_A.copyToHost(h_A);
-    printMatrix(h_A, batch_size, output_features, "Softmax Output (A)");
-
+    // Cleanup Test Data
+    test_X.free(); test_Y.free();
     // Cleanup
-    d_X.free();
-    d_W.free();
-    d_b.free();
-    d_Z.free();
-    d_A.free();
+    full_X.free(); full_Y.free();
+    batch_X.free(); batch_Y.free();
 
     return 0;
 }

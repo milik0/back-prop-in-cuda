@@ -17,15 +17,26 @@ struct Matrix {
     float* data;
     int rows;
     int cols;
+    bool allocated = false;
 
     void allocate(int r, int c) {
+        if (allocated) free(); // Safety check
         rows = r;
         cols = c;
         CHECK_CUDA(cudaMalloc(&data, rows * cols * sizeof(float)));
+        allocated = true;
     }
 
     void free() {
-        CHECK_CUDA(cudaFree(data));
+        if (allocated) {
+            CHECK_CUDA(cudaFree(data));
+            allocated = false;
+        }
+    }
+
+    // Helper to zero out gradients
+    void zeros() {
+        if (allocated) CHECK_CUDA(cudaMemset(data, 0, rows * cols * sizeof(float)));
     }
 
     void copyFromHost(const std::vector<float>& hostData) {
