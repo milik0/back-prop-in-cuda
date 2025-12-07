@@ -86,28 +86,28 @@ void reluActivation(const Matrix& Z, Matrix& A) {
 
 // CUDA Kernel for Softmax (Naive implementation)
 // This is not optimized. Optimized version would use shared memory reductions.
-// __global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
-//     int row = blockIdx.x * blockDim.x + threadIdx.x;
-//     if (row < m) {
-//         // 1. Find max for stability
-//         float max_val = -FLT_MAX;
-//         for (int i = 0; i < n; ++i) {
-//             float val = Z[row * n + i];
-//             if (val > max_val) max_val = val;
-//         }
+__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < m) {
+        // 1. Find max for stability
+        float max_val = -FLT_MAX;
+        for (int i = 0; i < n; ++i) {
+            float val = Z[row * n + i];
+            if (val > max_val) max_val = val;
+        }
 
-//         // 2. Compute exponentials and sum
-//         float sum_exp = 0.0f;
-//         for (int i = 0; i < n; ++i) {
-//             sum_exp += expf(Z[row * n + i] - max_val);
-//         }
+        // 2. Compute exponentials and sum
+        float sum_exp = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            sum_exp += expf(Z[row * n + i] - max_val);
+        }
 
-//         // 3. Normalize
-//         for (int i = 0; i < n; ++i) {
-//             A[row * n + i] = expf(Z[row * n + i] - max_val) / sum_exp;
-//         }
-//     }
-// }
+        // 3. Normalize
+        for (int i = 0; i < n; ++i) {
+            A[row * n + i] = expf(Z[row * n + i] - max_val) / sum_exp;
+        }
+    }
+}
 
 void softmaxActivation(const Matrix& Z, Matrix& A) {
     if (Z.rows != A.rows || Z.cols != A.cols) {
