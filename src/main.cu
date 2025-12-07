@@ -1,5 +1,6 @@
 #include "utils.cuh"
 #include "kernels.cuh"
+#include "mlp.cuh"
 #include <iostream>
 #include <vector>
 
@@ -15,66 +16,44 @@ void printMatrix(const std::vector<float>& data, int rows, int cols, const char*
 }
 
 int main() {
-    // Dimensions
+    // 1. Setup Data
     int batch_size = 2;
-    int input_features = 3;
-    int output_features = 2;
+    Matrix d_X; d_X.allocate(batch_size, 3);
+    // ... fill d_X with data ...
 
-    // Host Data
-    std::vector<float> h_X = {1.0f, 2.0f, 3.0f,  // Sample 1
-                              4.0f, 5.0f, 6.0f}; // Sample 2
+    // 2. Build MLP
+    MLP model;
     
-    std::vector<float> h_W = {0.1f, 0.2f,
-                              0.3f, 0.4f,
-                              0.5f, 0.6f}; // 3x2 Matrix
+    // Layer 1: 3 inputs -> 4 hidden
+    Linear* fc1 = new Linear(3, 4); 
+    // Initialize fc1->W and fc1->b here with random values!
+    model.add(fc1);
     
-    std::vector<float> h_b = {0.1f, 0.2f}; // Bias for 2 outputs
+    model.add(new ReLU());
 
-    // Device Matrices
-    Matrix d_X, d_W, d_b, d_Z, d_A;
-    d_X.allocate(batch_size, input_features);
-    d_W.allocate(input_features, output_features);
-    d_b.allocate(1, output_features);
-    d_Z.allocate(batch_size, output_features);
-    d_A.allocate(batch_size, output_features);
+    // Layer 2: 4 hidden -> 2 outputs
+    Linear* fc2 = new Linear(4, 2);
+    // Initialize fc2->W and fc2->b here!
+    model.add(fc2);
 
-    // Copy to Device
-    d_X.copyFromHost(h_X);
-    d_W.copyFromHost(h_W);
-    d_b.copyFromHost(h_b);
-
-    // 1. Linear Forward: Z = X * W
-    matrixMultiply(d_X, d_W, d_Z);
+    // 3. Training Loop (Simplified)
+    float learning_rate = 0.01f;
     
-    // 2. Add Bias: Z = Z + b
-    addBias(d_Z, d_b);
+    // Forward
+    Matrix prediction = model.forward(d_X);
 
-    // Copy back to check Linear result
-    std::vector<float> h_Z;
-    d_Z.copyToHost(h_Z);
-    printMatrix(h_Z, batch_size, output_features, "Linear Output (Z)");
+    // Compute Loss Gradient (d_loss) manually for now
+    // e.g., if Loss = MSE, then d_loss = 2 * (prediction - target)
+    Matrix d_loss; 
+    d_loss.allocate(batch_size, 2); 
+    // ... fill d_loss ...
 
-    // 3. Activation: A = ReLU(Z)
-    // Let's modify Z to have some negative values to test ReLU
-    // But for now, let's just run it.
-    reluActivation(d_Z, d_A);
+    // Backward
+    model.backward(d_loss, learning_rate);
 
-    // Copy back
-    std::vector<float> h_A;
-    d_A.copyToHost(h_A);
-    printMatrix(h_A, batch_size, output_features, "ReLU Output (A)");
-
-    // 4. Softmax
-    softmaxActivation(d_Z, d_A);
-    d_A.copyToHost(h_A);
-    printMatrix(h_A, batch_size, output_features, "Softmax Output (A)");
-
-    // Cleanup
+    // Cleanup done by MLP destructor
     d_X.free();
-    d_W.free();
-    d_b.free();
-    d_Z.free();
-    d_A.free();
-
+    d_loss.free();
+    
     return 0;
 }
