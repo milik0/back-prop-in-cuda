@@ -43,7 +43,7 @@ float calculate_accuracy(Matrix& preds, Matrix& targets) {
     return (float)hits / batch_size;
 }
 
-// Helper to init weights (Xavier Initialization is better for Deep Nets)
+// Helper to init weights
 void init_xavier(Matrix& m) {
     float scale = sqrt(2.0f / m.rows);
     std::vector<float> host_data(m.rows * m.cols);
@@ -100,7 +100,7 @@ int main() {
         for (int b = 0; b < num_batches; ++b) {
             // Slice Batch (Copy from full dataset to batch matrix)
             // Note: This copying is slow (D->H->D) usually, but for simplicity we do it here.
-            // A kernel "slice" copy would be faster.
+            // kernel "slice" copy would be faster.
             CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
                                   batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
             CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
