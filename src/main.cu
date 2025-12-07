@@ -123,6 +123,24 @@ int main() {
         std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" << std::endl;
     }
 
+    std::cout << "\n=== Final Evaluation on Test Set ===\n";
+    
+    // 1. Load Test Data
+    Matrix test_X, test_Y;
+    int N_TEST_SAMPLES = 10000;
+    loadMNIST("/home/khaled.mili/data/t10k-images-idx3-ubyte", "/home/khaled.mili/data/t10k-labels-idx1-ubyte", test_X, test_Y, N_TEST_SAMPLES);
+
+    // 2. Run Inference (Forward Pass only)
+    // We process in one giant batch since 10k fits easily in GPU memory usually.
+    // If you run out of memory, split this like the training loop.
+    Matrix test_preds = model.forward(test_X);
+
+    // 3. Calculate Accuracy
+    float test_acc = calculate_accuracy(test_preds, test_Y);
+    std::cout << "Test Set Accuracy: " << test_acc * 100.0f << "%" << std::endl;
+
+    // Cleanup Test Data
+    test_X.free(); test_Y.free();
     // Cleanup
     full_X.free(); full_Y.free();
     batch_X.free(); batch_Y.free();
