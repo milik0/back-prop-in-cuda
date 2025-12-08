@@ -165,7 +165,6 @@ def train_mnist(model, device, data_path, epochs=5, batch_size=64, lr=0.01, seed
     
     return history, total_time
 
-
 def train_xor(model, device, epochs=10000, lr=0.01, seed=1337):
     """
     Train MLP on XOR problem matching CUDA implementation
@@ -192,6 +191,21 @@ def train_xor(model, device, epochs=10000, lr=0.01, seed=1337):
     history = {'epoch': [], 'loss': []}
     
     import time
+    
+    # Warmup to avoid measuring compilation time
+    for _ in range(10):
+        outputs = model(X)
+        loss = criterion(outputs, Y)
+        model.zero_grad()
+        loss.backward()
+        with torch.no_grad():
+            for param in model.parameters():
+                param -= lr * param.grad
+    
+    # Synchronize before starting timer
+    if device == 'cuda':
+        torch.cuda.synchronize()
+    
     start_time = time.time()
     
     for epoch in range(epochs):
@@ -207,13 +221,24 @@ def train_xor(model, device, epochs=10000, lr=0.01, seed=1337):
             for param in model.parameters():
                 param -= lr * param.grad
         
-        # Log every 1000 steps
+        # Store loss WITHOUT calling .item() to avoid sync
         if epoch % 1000 == 0:
             history['epoch'].append(epoch)
-            history['loss'].append(loss.item())
-            print(f"Epoch {epoch:5d} | Loss: {loss.item():.6f}")
+            # Clone to avoid holding reference to computation graph
+            history['loss'].append(loss.detach().clone())
+    
+    # Synchronize before stopping timer
+    if device == 'cuda':
+        torch.cuda.synchronize()
     
     total_time = time.time() - start_time
+    
+    # Convert losses to CPU after training
+    history['loss'] = [l.item() for l in history['loss']]
+    
+    # Print logged losses
+    for epoch, loss_val in zip(history['epoch'], history['loss']):
+        print(f"Epoch {epoch:5d} | Loss: {loss_val:.6f}")
     
     # Final predictions
     with torch.no_grad():
