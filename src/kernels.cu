@@ -2,18 +2,49 @@
 #include <cmath>
 #include <cfloat>
 
+#define TILE_SIZE 16
+
 // CUDA Kernel for Matrix Multiplication
 // C = A * B
 // A: m x k, B: k x n, C: m x n
 __global__ void matmul_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE - 1) / TILE_SIZE; ++t) {
+        int A_row = row;
+        int A_col = t * TILE_SIZE + tx;
+        if (A_row < m && A_col < k)
+            As[ty][tx] = A[A_row * k + A_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        int B_row = t * TILE_SIZE + ty;
+        int B_col = col;
+        if (B_row < k && B_col < n)
+            Bs[ty][tx] = B[B_row * n + B_col];
+        else
+            Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            sum += As[ty][i] * Bs[i][tx];
+        }
+        __syncthreads();
+    }
 
     if (row < m && col < n) {
-        float sum = 0.0f;
-        for (int i = 0; i < k; ++i) {
-            sum += A[row * k + i] * B[i * n + col];
-        }
         C[row * n + col] = sum;
     }
 }
@@ -41,11 +72,30 @@ void matrixMultiply(const Matrix& A, const Matrix& B, Matrix& C) {
 // Y: m x n, b: 1 x n
 // Each row of Y corresponds to a sample, we add b to each sample.
 __global__ void add_bias_kernel(float* Y, const float* b, int m, int n) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    // Shared memory to cache the bias vector for this tile's columns
+    __shared__ float b_shared[TILE_SIZE];
+
+    // Load bias into shared memory
+    // Only the first row of threads in the block needs to load it
+    if (ty == 0) {
+        if (col < n) {
+            b_shared[tx] = b[col];
+        } else {
+            b_shared[tx] = 0.0f;
+        }
+    }
+    __syncthreads();
 
     if (row < m && col < n) {
-        Y[row * n + col] += b[col];
+        Y[row * n + col] += b_shared[tx];
     }
 }
 
@@ -91,15 +141,13 @@ __global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
     if (row < m) {
         // 1. Find max for stability
         float max_val = -FLT_MAX;
-        for (int i = 0; i < n; ++i) {
-            float val = Z[row * n + i];
-            if (val > max_val) max_val = val;
-        }
-
-        // 2. Compute exponentials and sum
-        float sum_exp = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            sum_exp += expf(Z[row * n + i] - max_val);
+// -----------------------------------------------------------
+// 1. Matrix Multiplication with Transpose A: C = A^T * B
+// Used for: dW = X^T * dZ
+// Dimensions: A is (m x k), B is (m x n), C is (k x n)
+// Note: Inner dimension for mult is 'm' (rows of A, rows of B)
+// -----------------------------------------------------------
+__global__ void matmul_transposeA_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
         }
 
         // 3. Normalize
@@ -194,27 +242,62 @@ void matrixMultiplyTransposeA(const Matrix& A, const Matrix& B, Matrix& C) {
 
 // -----------------------------------------------------------
 // 2. Matrix Multiplication with Transpose B: C = A * B^T
+// -----------------------------------------------------------
+// 2. Matrix Multiplication with Transpose B: C = A * B^T
 // Used for: d_input = dZ * W^T
 // Dimensions: A is (m x k), B is (n x k), C is (m x n)
 // Note: Inner dimension is 'k' (cols of A, cols of B)
 // -----------------------------------------------------------
 __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y; // range: 0 to m-1
-    int col = blockIdx.x * blockDim.x + threadIdx.x; // range: 0 to n-1
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE - 1) / TILE_SIZE; ++t) {
+        // Load A: row `row`, col `t*TILE + tx`
+        int A_row = row;
+        int A_col = t * TILE_SIZE + tx;
+        if (A_row < m && A_col < k)
+            As[ty][tx] = A[A_row * k + A_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        // Load B: row `bx*TILE + ty` (part of col of C), col `t*TILE + tx` (part of k)
+        // We want B[col][k].
+        // We load B rows corresponding to C cols.
+        int B_row = bx * TILE_SIZE + ty; 
+        int B_col = t * TILE_SIZE + tx;
+        
+        // B is n x k.
+        if (B_row < n && B_col < k)
+             Bs[ty][tx] = B[B_row * k + B_col];
+        else
+             Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            // sum += A[row][k] * B[col][k]
+            // A[row][k] is As[ty][i]
+            // B[col][k] is Bs[tx][i] (since we loaded B_row corresponding to ty, but we need B_row corresponding to tx)
+            sum += As[ty][i] * Bs[tx][i];
+        }
+        __syncthreads();
+    }
 
     if (row < m && col < n) {
-        float sum = 0.0f;
-        // Dot product of (row-th row of A) and (col-th col of B^T)
-        // (col-th col of B^T) is (col-th row of B)
-        for (int i = 0; i < k; ++i) {
-            // A[row][i] * B[col][i]
-            sum += A[row * k + i] * B[col * k + i];
-        }
         C[row * n + col] = sum;
     }
-}
-
-void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
+}oid matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
     // A: m x k, B: n x k (treated as k x n)
     // Output C: m x n
     if (A.cols != B.cols) {
@@ -232,16 +315,41 @@ void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
 // -----------------------------------------------------------
 // 3. Bias Gradient: db = sum(dZ, axis=0)
 // Collapses batch dimension. 
-// A naive implementation using atomicAdd for simplicity.
-// For production, use parallel reduction.
+// Optimized using Shared Memory Reduction to reduce atomicAdd contention.
 // -----------------------------------------------------------
 __global__ void bias_grad_kernel(const float* dZ, float* db, int m, int n) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
 
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    // Shared memory for partial sums
+    __shared__ float sdata[TILE_SIZE][TILE_SIZE];
+
+    // 1. Load data into shared memory
     if (row < m && col < n) {
-        // Each thread handles one element of dZ and adds it to the corresponding bias
-        atomicAdd(&db[col], dZ[row * n + col]);
+        sdata[ty][tx] = dZ[row * n + col];
+    } else {
+        sdata[ty][tx] = 0.0f;
+    }
+    __syncthreads();
+
+    // 2. Perform reduction along the Y-axis (rows) within the block
+    // We sum up the column values into sdata[0][tx]
+    for (int stride = TILE_SIZE / 2; stride > 0; stride >>= 1) {
+        if (ty < stride) {
+            sdata[ty][tx] += sdata[ty + stride][tx];
+        }
+        __syncthreads();
+    }
+
+    // 3. Atomic Add the block's partial sum to global memory
+    // Only one thread per column (ty == 0) performs the atomic add
+    if (ty == 0 && col < n) {
+        atomicAdd(&db[col], sdata[0][tx]);
     }
 }
 
