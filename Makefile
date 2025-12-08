@@ -40,3 +40,6 @@ benchmark-all: $(TARGET) $(BIN_DIR)/mlp_xor_test
         cd benchmark && $(PYTHON) benchmark_mnist.py
         cd benchmark && $(PYTHON) benchmark_xor.py
         cd benchmark && $(PYTHON) visualize.py
+
+clean:
+		rm -rf $(OBJ_DIR) $(BIN_DIR)
