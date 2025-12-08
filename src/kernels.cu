@@ -128,21 +128,49 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
 // Dimensions: A is (m x k), B is (m x n), C is (k x n)
 // Note: Inner dimension for mult is 'm' (rows of A, rows of B)
 // -----------------------------------------------------------
+#define TILE_SIZE 16
+
 __global__ void matmul_transposeA_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
-    // We are computing C[row, col] where row is in [0, k) and col in [0, n)
-    int row = blockIdx.y * blockDim.y + threadIdx.y; // range: 0 to k-1
-    int col = blockIdx.x * blockDim.x + threadIdx.x; // range: 0 to n-1
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (m + TILE_SIZE - 1) / TILE_SIZE; ++t) {
+        int A_row = t * TILE_SIZE + ty;
+        int A_col = by * TILE_SIZE + tx;
+        
+        if (A_row < m && A_col < k)
+            As[ty][tx] = A[A_row * k + A_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        int B_row = t * TILE_SIZE + ty;
+        int B_col = bx * TILE_SIZE + tx;
+
+        if (B_row < m && B_col < n)
+            Bs[ty][tx] = B[B_row * n + B_col];
+        else
+            Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int k_idx = 0; k_idx < TILE_SIZE; ++k_idx) {
+            sum += As[k_idx][ty] * Bs[k_idx][tx];
+        }
+
+        __syncthreads();
+    }
 
     if (row < k && col < n) {
-        float sum = 0.0f;
-        // Dot product of (row-th row of A^T) and (col-th col of B)
-        // (row-th row of A^T) is (row-th col of A)
-        // We iterate over the common dimension 'm'
-        for (int i = 0; i < m; ++i) {
-            // A is accessed as A[i * k + row] because we want column 'row' at row 'i'
-            // B is accessed as B[i * n + col]
-            sum += A[i * k + row] * B[i * n + col];
-        }
         C[row * n + col] = sum;
     }
 }
