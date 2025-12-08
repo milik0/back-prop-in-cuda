@@ -94,8 +94,14 @@ int main() {
 
     std::cout << "Starting Training (" << epochs << " epochs, batch size " << batch_size << ")...\n";
 
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
     for (int epoch = 0; epoch < epochs; ++epoch) {
         float total_acc = 0.0f;
+        float total_forward_ms = 0.0f;
+        float total_backward_ms = 0.0f;
 
         for (int b = 0; b < num_batches; ++b) {
             // Slice Batch (Copy from full dataset to batch matrix)
@@ -107,11 +113,22 @@ int main() {
                                   batch_size * 10 * sizeof(float), cudaMemcpyDeviceToDevice));
 
             // Forward
+            CHECK_CUDA(cudaEventRecord(start));
             Matrix preds = model.forward(batch_X);
+            CHECK_CUDA(cudaEventRecord(stop));
+            CHECK_CUDA(cudaEventSynchronize(stop));
+            float milliseconds = 0;
+            CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+            total_forward_ms += milliseconds;
 
             // Backward
             // For SoftmaxCrossEntropy, the "backward" takes the LABELS, not d_loss
+            CHECK_CUDA(cudaEventRecord(start));
             model.backward(batch_Y, learning_rate);
+            CHECK_CUDA(cudaEventRecord(stop));
+            CHECK_CUDA(cudaEventSynchronize(stop));
+            CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+            total_backward_ms += milliseconds;
 
             // Logging
             if (b % 100 == 0) {
@@ -120,8 +137,13 @@ int main() {
             }
             total_acc += calculate_accuracy(preds, batch_Y);
         }
-        std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" << std::endl;
+        std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" 
+                  << " | Avg Fwd: " << total_forward_ms / num_batches << " ms"
+                  << " | Avg Bwd: " << total_backward_ms / num_batches << " ms" << std::endl;
     }
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
 
     std::cout << "\n=== Final Evaluation on Test Set ===\n";
     
