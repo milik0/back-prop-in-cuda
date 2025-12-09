@@ -111,7 +111,7 @@ def benchmark_pytorch_xor(device='cuda', warmup=True):
     if warmup and device == 'cuda':
         print("Warming up GPU...")
         dummy_model = XORMLP()
-        train_xor(dummy_model, device=device, epochs=100, lr=LEARNING_RATE, verbose=False)
+        train_xor(dummy_model, device=device, epochs=100, lr=LEARNING_RATE)
         torch.cuda.synchronize()
         del dummy_model
         torch.cuda.empty_cache()
