@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <iomanip>
+#include <chrono>
 
 // Helper to calculate MSE on CPU (for logging)
 float calculate_mse_cpu(Matrix& preds, Matrix& target) {
@@ -28,11 +29,24 @@ void randomize(Matrix& m, float min = -0.5f, float max = 0.5f) {
     m.copyFromHost(host_data);
 }
 
-void train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
+float train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
     Matrix d_loss;
     d_loss.allocate(Y.rows, Y.cols);
 
     std::cout << "Training on XOR (" << epochs << " epochs)...\n";
+    
+    // Warmup: run a few iterations to initialize everything
+    for (int i = 0; i < 10; ++i) {
+        Matrix preds = model.forward(X);
+        computeMSEGradient(preds, Y, d_loss);
+        model.backward(d_loss, lr);
+    }
+    
+    // Synchronize GPU before timing
+    cudaDeviceSynchronize();
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
     for (int i = 0; i < epochs; ++i) {
         // Forward
         Matrix preds = model.forward(X);
@@ -47,7 +61,16 @@ void train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
         computeMSEGradient(preds, Y, d_loss);
         model.backward(d_loss, lr);
     }
+    
+    // Synchronize GPU after training
+    cudaDeviceSynchronize();
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    float training_time = elapsed.count();
+    
     d_loss.free();
+    return training_time;
 }
 
 int main() {
@@ -106,7 +129,8 @@ int main() {
     // ==========================================
     // 3. Train
     // ==========================================
-    train(model, d_X, d_Y, 10000, 0.1f);
+    float training_time = train(model, d_X, d_Y, 10000, 0.1f);
+    std::cout << "\nTraining Time: " << training_time << " seconds\n";
 
     // ==========================================
     // 4. Verify Results

@@ -192,7 +192,7 @@ def train_xor(model, device, epochs=10000, lr=0.01, seed=1337):
     
     import time
     
-    # Warmup to avoid measuring compilation time
+    # Warmup to avoid measuring compilation time (matching CUDA implementation)
     for _ in range(10):
         outputs = model(X)
         loss = criterion(outputs, Y)

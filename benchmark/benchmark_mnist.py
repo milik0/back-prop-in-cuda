@@ -40,12 +40,11 @@ def benchmark_cuda_mnist():
             timeout=600  # 10 minute timeout
         )
         
-        total_time = time.time() - start_time
-        
         # Parse output for accuracy and timing info
         output_lines = result.stdout.split('\n')
         train_accuracies = []
         test_accuracy = None
+        training_time = None
         
         for line in output_lines:
             if "Avg Accuracy:" in line:
@@ -54,6 +53,16 @@ def benchmark_cuda_mnist():
                 train_accuracies.append(acc)
             elif "Test Set Accuracy:" in line:
                 test_accuracy = float(line.split("Test Set Accuracy: ")[1].split("%")[0])
+            elif "Training Time:" in line:
+                # Extract from line like "Training Time: 12.345 seconds"
+                training_time = float(line.split(':')[1].split()[0])
+        
+        # Fallback to subprocess time if training time not found
+        if training_time is None:
+            training_time = time.time() - start_time
+            print("Warning: Could not parse training time from output, using subprocess time")
+        
+        total_time = training_time
         
         results = {
             'implementation': 'CUDA',

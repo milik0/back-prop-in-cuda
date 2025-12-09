@@ -6,6 +6,7 @@
 #include <vector>
 #include <iomanip>
 #include <algorithm> // for std::shuffle
+#include <chrono>
 
 // Helper: Calculate Accuracy on CPU
 float calculate_accuracy(Matrix& preds, Matrix& targets) {
@@ -94,6 +95,20 @@ int main() {
 
     std::cout << "Starting Training (" << epochs << " epochs, batch size " << batch_size << ")...\n";
 
+    // Warmup: run a few batches to initialize everything
+    for (int b = 0; b < 10 && b < num_batches; ++b) {
+        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
+                              batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
+        CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
+                              batch_size * 10 * sizeof(float), cudaMemcpyDeviceToDevice));
+        Matrix preds = model.forward(batch_X);
+        model.backward(batch_Y, learning_rate);
+    }
+    
+    // Synchronize GPU before timing
+    cudaDeviceSynchronize();
+    auto start_time = std::chrono::high_resolution_clock::now();
+
     for (int epoch = 0; epoch < epochs; ++epoch) {
         float total_acc = 0.0f;
 
@@ -122,6 +137,12 @@ int main() {
         }
         std::cout << "Epoch " << epoch << " | Avg Accuracy: " << (total_acc / num_batches) * 100.0f << "%" << std::endl;
     }
+    
+    // Synchronize GPU after training
+    cudaDeviceSynchronize();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    std::cout << "\nTraining Time: " << elapsed.count() << " seconds\n";
 
     std::cout << "\n=== Final Evaluation on Test Set ===\n";
     

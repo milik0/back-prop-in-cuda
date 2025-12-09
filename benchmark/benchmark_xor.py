@@ -38,12 +38,11 @@ def benchmark_cuda_xor():
             timeout=60  # 1 minute timeout
         )
         
-        total_time = time.time() - start_time
-        
-        # Parse output for loss values
+        # Parse output for loss values and training time
         output_lines = result.stdout.split('\n')
         epochs = []
         losses = []
+        training_time = None
         
         for line in output_lines:
             if "Epoch" in line and "Loss:" in line:
@@ -54,6 +53,16 @@ def benchmark_cuda_xor():
                     loss = float(parts[1].split(':')[1].strip())
                     epochs.append(epoch)
                     losses.append(loss)
+            elif "Training Time:" in line:
+                # Extract from line like "Training Time: 1.234 seconds"
+                training_time = float(line.split(':')[1].split()[0])
+        
+        # Fallback to subprocess time if training time not found
+        if training_time is None:
+            training_time = time.time() - start_time
+            print("Warning: Could not parse training time from output, using subprocess time")
+        
+        total_time = training_time
         
         results = {
             'implementation': 'CUDA',
