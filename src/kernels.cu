@@ -454,19 +454,27 @@ void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
 // Collapses batch dimension. 
 // Optimized using Shared Memory Reduction to reduce atomicAdd contention.
 // -----------------------------------------------------------
+
+__device__ inline float warpReduceSum(float val) {
+    for (int offset = 16; offset > 0; offset /= 2)
+        val += __shfl_down_sync(0xffffffff, val, offset);
+    return val;
+}
+
 __global__ void bias_grad_kernel(const float* dZ, float* db, int m, int n) {
-    int bx = blockIdx.x;
-    int by = blockIdx.y;
+    // Use 32x32 tile (1024 threads)
     int tx = threadIdx.x;
     int ty = threadIdx.y;
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
 
-    int row = by * TILE_SIZE + ty;
-    int col = bx * TILE_SIZE + tx;
+    int col = bx * 32 + tx;
+    int row = by * 32 + ty;
 
-    // Shared memory for partial sums
-    __shared__ float sdata[TILE_SIZE][TILE_SIZE];
+    // Pad shared memory to avoid bank conflicts
+    __shared__ float sdata[32][33];
 
-    // 1. Load data into shared memory
+    // 1. Load data into shared memory (Coalesced)
     if (row < m && col < n) {
         sdata[ty][tx] = dZ[row * n + col];
     } else {
@@ -474,19 +482,22 @@ __global__ void bias_grad_kernel(const float* dZ, float* db, int m, int n) {
     }
     __syncthreads();
 
-    // 2. Perform reduction along the Y-axis (rows) within the block
-    // We sum up the column values into sdata[0][tx]
-    for (int stride = TILE_SIZE / 2; stride > 0; stride >>= 1) {
-        if (ty < stride) {
-            sdata[ty][tx] += sdata[ty + stride][tx];
-        }
-        __syncthreads();
-    }
+    // 2. Transpose and Reduce
+    // We want to sum along columns (reduce rows).
+    // Thread (tx, ty) reads sdata[tx][ty].
+    // tx becomes the row index (0..31), ty becomes the column index (0..31).
+    // Warp `ty` handles column `ty`.
+    
+    float val = sdata[tx][ty];
+    
+    // Sum within the warp (summing over tx, which corresponds to rows)
+    val = warpReduceSum(val);
 
-    // 3. Atomic Add the block's partial sum to global memory
-    // Only one thread per column (ty == 0) performs the atomic add
-    if (ty == 0 && col < n) {
-        atomicAdd(&db[col], sdata[0][tx]);
+    // 3. Atomic Add
+    // Only the first thread in the warp (tx=0) writes the result
+    int out_col = bx * 32 + ty;
+    if (tx == 0 && out_col < n) {
+        atomicAdd(&db[out_col], val);
     }
 }
 
@@ -494,7 +505,7 @@ void computeBiasGradient(const Matrix& dY, Matrix& db) {
     // Initialize db to zero first!
     db.zeros();
 
-    dim3 blockDim(16, 16);
+    dim3 blockDim(32, 32);
     dim3 gridDim((dY.cols + blockDim.x - 1) / blockDim.x, (dY.rows + blockDim.y - 1) / blockDim.y);
     
     bias_grad_kernel<<<gridDim, blockDim>>>(dY.data, db.data, dY.rows, dY.cols);
