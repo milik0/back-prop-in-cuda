@@ -8,6 +8,12 @@
 // A: m x k, B: k x n, C: m x n
 void matrixMultiply(const Matrix& A, const Matrix& B, Matrix& C);
 
+// Matrix Multiplication with Bias: C = A * B + b
+void matrixMultiplyWithBias(const Matrix& A, const Matrix& B, const Matrix& b, Matrix& C);
+
+// Matrix Multiplication with Bias and ReLU: C = ReLU(A * B + b)
+void matrixMultiplyWithBiasAndReLU(const Matrix& A, const Matrix& B, const Matrix& b, Matrix& C);
+
 // Add Bias: Y = Y + b
 // Y: m x n, b: 1 x n (broadcasted over rows) or m x 1? Usually bias is per output neuron.
 // If Y is (batch_size, output_features), b is (output_features).
