@@ -1,5 +1,6 @@
 """
 Benchmark MNIST training: CUDA vs PyTorch
+Fixed timing methodology for fair comparison
 """
 import os
 import sys
@@ -29,9 +30,9 @@ def benchmark_cuda_mnist():
         print("Please run 'make' first to build the CUDA implementation.")
         return None
     
+    # Measure total wall-clock time (including process startup)
     start_time = time.time()
     
-    # Run CUDA executable and capture output
     try:
         result = subprocess.run(
             [CUDA_EXECUTABLE],
@@ -40,33 +41,39 @@ def benchmark_cuda_mnist():
             timeout=600  # 10 minute timeout
         )
         
-        # Parse output for accuracy and timing info
+        # Total wall-clock time
+        total_time = time.time() - start_time
+        
+        # Parse output for accuracy and internal timing info
         output_lines = result.stdout.split('\n')
         train_accuracies = []
         test_accuracy = None
-        training_time = None
+        kernel_time = None
         
         for line in output_lines:
             if "Avg Accuracy:" in line:
                 # Extract accuracy from line like "Epoch 0 | Avg Accuracy: 85.5%"
-                acc = float(line.split("Avg Accuracy: ")[1].split("%")[0])
-                train_accuracies.append(acc)
+                try:
+                    acc = float(line.split("Avg Accuracy: ")[1].split("%")[0])
+                    train_accuracies.append(acc)
+                except (ValueError, IndexError):
+                    continue
             elif "Test Set Accuracy:" in line:
-                test_accuracy = float(line.split("Test Set Accuracy: ")[1].split("%")[0])
+                try:
+                    test_accuracy = float(line.split("Test Set Accuracy: ")[1].split("%")[0])
+                except (ValueError, IndexError):
+                    pass
             elif "Training Time:" in line:
-                # Extract from line like "Training Time: 12.345 seconds"
-                training_time = float(line.split(':')[1].split()[0])
-        
-        # Fallback to subprocess time if training time not found
-        if training_time is None:
-            training_time = time.time() - start_time
-            print("Warning: Could not parse training time from output, using subprocess time")
-        
-        total_time = training_time
+                # Extract kernel/training time for reference
+                try:
+                    kernel_time = float(line.split(':')[1].split()[0])
+                except (ValueError, IndexError):
+                    pass
         
         results = {
             'implementation': 'CUDA',
             'total_time': total_time,
+            'kernel_time': kernel_time,  # Internal training time
             'train_accuracies': train_accuracies,
             'test_accuracy': test_accuracy,
             'epochs': EPOCHS,
@@ -76,7 +83,9 @@ def benchmark_cuda_mnist():
         }
         
         print(f"\nCUDA Results:")
-        print(f"  Total Time: {total_time:.3f}s")
+        print(f"  Total Wall Time: {total_time:.3f}s")
+        if kernel_time:
+            print(f"  Kernel Time: {kernel_time:.3f}s")
         print(f"  Final Train Accuracy: {train_accuracies[-1] if train_accuracies else 'N/A'}%")
         print(f"  Test Accuracy: {test_accuracy}%")
         
@@ -87,10 +96,12 @@ def benchmark_cuda_mnist():
         return None
     except Exception as e:
         print(f"Error running CUDA implementation: {e}")
+        import traceback
+        traceback.print_exc()
         return None
 
 
-def benchmark_pytorch_mnist(device='cuda'):
+def benchmark_pytorch_mnist(device='cuda', warmup=True):
     """Run PyTorch implementation and measure performance"""
     print("\n" + "=" * 60)
     print(f"Running PyTorch MLP on MNIST (device: {device})...")
@@ -100,10 +111,32 @@ def benchmark_pytorch_mnist(device='cuda'):
         print("Warning: CUDA not available, falling back to CPU")
         device = 'cpu'
     
+    # Warmup GPU if needed
+    if warmup and device == 'cuda':
+        print("Warming up GPU...")
+        dummy_model = MLP()
+        try:
+            train_mnist(
+                dummy_model, 
+                device=device, 
+                data_path=DATA_PATH,
+                epochs=1, 
+                batch_size=BATCH_SIZE,
+                lr=LEARNING_RATE,
+            )
+            torch.cuda.synchronize()
+            del dummy_model
+            torch.cuda.empty_cache()
+        except Exception as e:
+            print(f"Warmup failed: {e}")
+    
     model = MLP()
     
     try:
-        history, total_time = train_mnist(
+        # Measure total time including all overhead
+        start_time = time.time()
+        
+        history, training_time = train_mnist(
             model=model,
             device=device,
             data_path=DATA_PATH,
@@ -112,10 +145,17 @@ def benchmark_pytorch_mnist(device='cuda'):
             lr=LEARNING_RATE
         )
         
+        # Ensure GPU operations complete
+        if device == 'cuda':
+            torch.cuda.synchronize()
+        
+        total_time = time.time() - start_time
+        
         results = {
             'implementation': f'PyTorch ({device})',
             'device': device,
             'total_time': total_time,
+            'training_time': training_time,  # Time from train_mnist function
             'train_accuracies': history['train_acc'],
             'test_accuracy': history['test_acc'][-1],
             'epoch_times': history['time'],
@@ -126,6 +166,7 @@ def benchmark_pytorch_mnist(device='cuda'):
         
         print(f"\nPyTorch ({device}) Results:")
         print(f"  Total Time: {total_time:.3f}s")
+        print(f"  Training Time: {training_time:.3f}s")
         print(f"  Final Train Accuracy: {history['train_acc'][-1]:.2f}%")
         print(f"  Test Accuracy: {history['test_acc'][-1]:.2f}%")
         
@@ -155,8 +196,9 @@ def compare_results(results_list):
     print("BENCHMARK COMPARISON SUMMARY")
     print("=" * 60)
     
-    print(f"\n{'Implementation':<20} {'Time (s)':<12} {'Train Acc':<12} {'Test Acc':<12} {'Speedup':<10}")
-    print("-" * 70)
+    print("\nComparison using TOTAL WALL-CLOCK TIME (most fair):")
+    print(f"{'Implementation':<20} {'Total Time':<12} {'Train Acc':<12} {'Test Acc':<12} {'Speedup':<10}")
+    print("-" * 75)
     
     # Find baseline (CUDA) time
     cuda_time = None
@@ -180,7 +222,30 @@ def compare_results(results_list):
         
         print(f"{impl:<20} {total_time:<12.3f} {train_acc:<12.2f} {test_acc:<12.2f} {speedup:<10}")
     
+    # Also show kernel/training time breakdown
+    print("\n\nInternal Training Time Breakdown:")
+    print(f"{'Implementation':<20} {'Kernel/Train Time':<18} {'Overhead':<12}")
+    print("-" * 75)
+    
+    for result in results_list:
+        if result is None:
+            continue
+            
+        impl = result['implementation']
+        total_time = result['total_time']
+        
+        if 'CUDA' in result['implementation'] and result.get('kernel_time'):
+            internal = result['kernel_time']
+            overhead = total_time - internal
+            print(f"{impl:<20} {internal:<18.3f} {overhead:<12.3f}")
+        elif 'PyTorch' in result['implementation'] and result.get('training_time'):
+            internal = result['training_time']
+            overhead = total_time - internal
+            print(f"{impl:<20} {internal:<18.3f} {overhead:<12.3f}")
+    
     print("\n" + "=" * 60)
+    print("NOTE: Speedup is calculated using total wall-clock time for fair comparison")
+    print("=" * 60)
 
 
 def main():
