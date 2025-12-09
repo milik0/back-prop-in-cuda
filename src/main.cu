@@ -67,13 +67,18 @@ int main() {
     // 2. Build Model (784 -> 256 -> 10)
     MLP model;
     
-    // Layer 1
-    Linear* fc1 = new Linear(784, 256);
+    // Layer 1 (Fused Linear + ReLU)
+    LinearReLU* fc1 = new LinearReLU(784, 256);
     init_xavier(fc1->W); fc1->b.zeros();
     model.add(fc1);
-    
-    model.add(new ReLU());
 
+    // Witout fused ReLU
+    // Linear* fc1 = new Linear(784, 256);
+    // init_xavier(fc1->W); fc1->b.zeros();
+    // model.add(fc1);
+    // model.add(new ReLU());
+
+    
     // Layer 2 (Output)
     Linear* fc2 = new Linear(256, 10);
     init_xavier(fc2->W); fc2->b.zeros();
@@ -84,7 +89,7 @@ int main() {
 
     // 3. Mini-Batch Training Loop
     int batch_size = 64;
-    int epochs = 5;
+    int epochs = 20;
     float learning_rate = 0.01f;
     int num_batches = N_SAMPLES / batch_size;
 

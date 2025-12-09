@@ -133,6 +133,72 @@ void matrixMultiplyWithBias(const Matrix& A, const Matrix& B, const Matrix& b, M
     CHECK_CUDA(cudaGetLastError());
 }
 
+// CUDA Kernel for Matrix Multiplication with Bias and ReLU
+// C = ReLU(A * B + b)
+__global__ void matmul_with_bias_relu_kernel(const float* A, const float* B, const float* b, float* C, int m, int k, int n) {
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE - 1) / TILE_SIZE; ++t) {
+        int A_row = row;
+        int A_col = t * TILE_SIZE + tx;
+        if (A_row < m && A_col < k)
+            As[ty][tx] = A[A_row * k + A_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        int B_row = t * TILE_SIZE + ty;
+        int B_col = col;
+        if (B_row < k && B_col < n)
+            Bs[ty][tx] = B[B_row * n + B_col];
+        else
+            Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            sum += As[ty][i] * Bs[i][tx];
+        }
+        __syncthreads();
+    }
+
+    if (row < m && col < n) {
+        float val = sum + b[col];
+        C[row * n + col] = fmaxf(0.0f, val);
+    }
+}
+
+void matrixMultiplyWithBiasAndReLU(const Matrix& A, const Matrix& B, const Matrix& b, Matrix& C) {
+    if (A.cols != B.rows) {
+        std::cerr << "Error: Matrix dimensions mismatch for multiplication." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (C.rows != A.rows || C.cols != B.cols) {
+        std::cerr << "Error: Output matrix dimensions mismatch." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (b.cols != C.cols) {
+        std::cerr << "Error: Bias dimension mismatch." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    dim3 blockDim(16, 16);
+    dim3 gridDim((C.cols + blockDim.x - 1) / blockDim.x, (C.rows + blockDim.y - 1) / blockDim.y);
+
+    matmul_with_bias_relu_kernel<<<gridDim, blockDim>>>(A.data, B.data, b.data, C.data, A.rows, A.cols, B.cols);
+    CHECK_CUDA(cudaGetLastError());
+}
+
 // CUDA Kernel for Adding Bias
 // Y: m x n, b: 1 x n
 // Each row of Y corresponds to a sample, we add b to each sample.
