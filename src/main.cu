@@ -6,6 +6,7 @@
 #include <vector>
 #include <iomanip>
 #include <algorithm> // for std::shuffle
+#include <chrono>
 
 // Helper: Calculate Accuracy on CPU
 float calculate_accuracy(Matrix& preds, Matrix& targets) {
@@ -43,7 +44,7 @@ float calculate_accuracy(Matrix& preds, Matrix& targets) {
     return (float)hits / batch_size;
 }
 
-// Helper to init weights (Xavier Initialization is better for Deep Nets)
+// Helper to init weights
 void init_xavier(Matrix& m) {
     float scale = sqrt(2.0f / m.rows);
     std::vector<float> host_data(m.rows * m.cols);
@@ -99,6 +100,19 @@ int main() {
 
     std::cout << "Starting Training (" << epochs << " epochs, batch size " << batch_size << ")...\n";
 
+    // Warmup: run a few batches to initialize everything
+    for (int b = 0; b < 10 && b < num_batches; ++b) {
+        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
+                              batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
+        CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
+                              batch_size * 10 * sizeof(float), cudaMemcpyDeviceToDevice));
+        Matrix preds = model.forward(batch_X);
+        model.backward(batch_Y, learning_rate);
+    }
+    
+    // Synchronize GPU before timing
+    cudaDeviceSynchronize();
+    auto start_time = std::chrono::high_resolution_clock::now();
     cudaEvent_t start, stop;
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
@@ -111,7 +125,7 @@ int main() {
         for (int b = 0; b < num_batches; ++b) {
             // Slice Batch (Copy from full dataset to batch matrix)
             // Note: This copying is slow (D->H->D) usually, but for simplicity we do it here.
-            // A kernel "slice" copy would be faster.
+            // kernel "slice" copy would be faster.
             CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 784, 
                                   batch_size * 784 * sizeof(float), cudaMemcpyDeviceToDevice));
             CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size * 10, 
@@ -146,6 +160,12 @@ int main() {
                   << " | Avg Fwd: " << total_forward_ms / num_batches << " ms"
                   << " | Avg Bwd: " << total_backward_ms / num_batches << " ms" << std::endl;
     }
+    
+    // Synchronize GPU after training
+    cudaDeviceSynchronize();
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    std::cout << "\nTraining Time: " << elapsed.count() << " seconds\n";
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));
