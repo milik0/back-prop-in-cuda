@@ -68,6 +68,71 @@ void matrixMultiply(const Matrix& A, const Matrix& B, Matrix& C) {
     CHECK_CUDA(cudaGetLastError());
 }
 
+// CUDA Kernel for Matrix Multiplication with Bias
+// C = A * B + b
+__global__ void matmul_with_bias_kernel(const float* A, const float* B, const float* b, float* C, int m, int k, int n) {
+    int bx = blockIdx.x;
+    int by = blockIdx.y;
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+
+    int row = by * TILE_SIZE + ty;
+    int col = bx * TILE_SIZE + tx;
+
+    __shared__ float As[TILE_SIZE][TILE_SIZE];
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+
+    float sum = 0.0f;
+
+    for (int t = 0; t < (k + TILE_SIZE - 1) / TILE_SIZE; ++t) {
+        int A_row = row;
+        int A_col = t * TILE_SIZE + tx;
+        if (A_row < m && A_col < k)
+            As[ty][tx] = A[A_row * k + A_col];
+        else
+            As[ty][tx] = 0.0f;
+
+        int B_row = t * TILE_SIZE + ty;
+        int B_col = col;
+        if (B_row < k && B_col < n)
+            Bs[ty][tx] = B[B_row * n + B_col];
+        else
+            Bs[ty][tx] = 0.0f;
+
+        __syncthreads();
+
+        for (int i = 0; i < TILE_SIZE; ++i) {
+            sum += As[ty][i] * Bs[i][tx];
+        }
+        __syncthreads();
+    }
+
+    if (row < m && col < n) {
+        C[row * n + col] = sum + b[col];
+    }
+}
+
+void matrixMultiplyWithBias(const Matrix& A, const Matrix& B, const Matrix& b, Matrix& C) {
+    if (A.cols != B.rows) {
+        std::cerr << "Error: Matrix dimensions mismatch for multiplication." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (C.rows != A.rows || C.cols != B.cols) {
+        std::cerr << "Error: Output matrix dimensions mismatch." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+    if (b.cols != C.cols) {
+        std::cerr << "Error: Bias dimension mismatch." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    dim3 blockDim(16, 16);
+    dim3 gridDim((C.cols + blockDim.x - 1) / blockDim.x, (C.rows + blockDim.y - 1) / blockDim.y);
+
+    matmul_with_bias_kernel<<<gridDim, blockDim>>>(A.data, B.data, b.data, C.data, A.rows, A.cols, B.cols);
+    CHECK_CUDA(cudaGetLastError());
+}
+
 // CUDA Kernel for Adding Bias
 // Y: m x n, b: 1 x n
 // Each row of Y corresponds to a sample, we add b to each sample.
@@ -141,18 +206,21 @@ __global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
     if (row < m) {
         // 1. Find max for stability
         float max_val = -FLT_MAX;
-// -----------------------------------------------------------
-// 1. Matrix Multiplication with Transpose A: C = A^T * B
-// Used for: dW = X^T * dZ
-// Dimensions: A is (m x k), B is (m x n), C is (k x n)
-// Note: Inner dimension for mult is 'm' (rows of A, rows of B)
-// -----------------------------------------------------------
-__global__ void matmul_transposeA_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
+        for (int i = 0; i < n; ++i) {
+            if (Z[row * n + i] > max_val) max_val = Z[row * n + i];
+        }
+
+        // 2. Compute exponentials and sum
+        float sum_exp = 0.0f;
+        for (int i = 0; i < n; ++i) {
+            float val = expf(Z[row * n + i] - max_val);
+            A[row * n + i] = val; // Store temporarily
+            sum_exp += val;
         }
 
         // 3. Normalize
         for (int i = 0; i < n; ++i) {
-            A[row * n + i] = expf(Z[row * n + i] - max_val) / sum_exp;
+            A[row * n + i] /= sum_exp;
         }
     }
 }
@@ -297,7 +365,9 @@ __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* 
     if (row < m && col < n) {
         C[row * n + col] = sum;
     }
-}oid matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
+}
+
+void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
     // A: m x k, B: n x k (treated as k x n)
     // Output C: m x n
     if (A.cols != B.cols) {

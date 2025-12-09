@@ -62,7 +62,7 @@ int main() {
     std::cout << "Loading MNIST Data...\n";
     Matrix full_X, full_Y;
     int N_SAMPLES = 60000; // Load all training samples
-    loadMNIST("/home/khaled.mili/data/train-images-idx3-ubyte", "/home/khaled.mili/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
+    loadMNIST("/root/khaled-sans-bapt/back-prop-in-cuda/data/train-images-idx3-ubyte", "/root/khaled-sans-bapt/back-prop-in-cuda/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
 
     // 2. Build Model (784 -> 256 -> 10)
     MLP model;
@@ -150,7 +150,7 @@ int main() {
     // 1. Load Test Data
     Matrix test_X, test_Y;
     int N_TEST_SAMPLES = 10000;
-    loadMNIST("/home/khaled.mili/data/t10k-images-idx3-ubyte", "/home/khaled.mili/data/t10k-labels-idx1-ubyte", test_X, test_Y, N_TEST_SAMPLES);
+    loadMNIST("/root/khaled-sans-bapt/back-prop-in-cuda/data/t10k-images-idx3-ubyte", "/root/khaled-sans-bapt/back-prop-in-cuda/data/t10k-labels-idx1-ubyte", test_X, test_Y, N_TEST_SAMPLES);
 
     // 2. Run Inference (Forward Pass only)
     // We process in one giant batch since 10k fits easily in GPU memory usually.

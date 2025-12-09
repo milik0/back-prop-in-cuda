@@ -42,8 +42,8 @@ public:
             output.allocate(input.rows, W.cols);
         }
         
-        matrixMultiply(input, W, output);
-        addBias(output, b);
+        // Fused MatMul + Bias
+        matrixMultiplyWithBias(input, W, b, output);
         
         return output;
     }
