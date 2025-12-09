@@ -11,7 +11,7 @@ import torch
 from pytorch_mlp import MLP, train_mnist
 
 # Configuration
-DATA_PATH = os.path.expanduser("~/data")  # Adjust if needed
+DATA_PATH = os.path.expanduser("/root/khaled-sans-bapt/back-prop-in-cuda/data/")  # Adjust if needed
 CUDA_EXECUTABLE = "../bin/mlp_test"
 RESULTS_DIR = "./results"
 EPOCHS = 5
