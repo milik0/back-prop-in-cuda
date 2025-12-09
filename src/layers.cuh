@@ -42,8 +42,12 @@ public:
             output.allocate(input.rows, W.cols);
         }
         
-        matrixMultiply(input, W, output);
-        addBias(output, b);
+        // Fused MatMul + Bias
+        matrixMultiplyWithBias(input, W, b, output);
+
+        // UnFused version:
+        // matrixMultiply(input, W, output);
+        // addBias(output, b);
         
         return output;
     }
@@ -126,6 +130,70 @@ public:
         // We reuse the generic subtract/MSE gradient kernel
         computeMSEGradient(output, target_labels, d_input); 
         
+        return d_input;
+    }
+};
+
+// -----------------------------------------------------------
+// Linear Layer with Fused ReLU
+// -----------------------------------------------------------
+class LinearReLU : public Layer {
+public:
+    Matrix W, b;
+    Matrix dW, db;
+    Matrix input_cache;
+    Matrix output;
+    Matrix d_input;
+    Matrix dZ_temp; // Temporary storage for dZ (gradient before ReLU)
+
+    LinearReLU(int input_features, int output_features) {
+        W.allocate(input_features, output_features);
+        b.allocate(1, output_features);
+    }
+
+    ~LinearReLU() {
+        W.free(); b.free();
+        dW.free(); db.free();
+        output.free();
+        d_input.free();
+        dZ_temp.free();
+    }
+
+    Matrix forward(const Matrix& input) override {
+        input_cache = input; 
+
+        if (!output.allocated || output.rows != input.rows || output.cols != W.cols) {
+            output.allocate(input.rows, W.cols);
+        }
+        
+        // Fused MatMul + Bias + ReLU
+        matrixMultiplyWithBiasAndReLU(input, W, b, output);
+        
+        return output;
+    }
+
+    Matrix backward(const Matrix& d_output, float learning_rate) override {
+        if (!d_input.allocated || d_input.rows != input_cache.rows || d_input.cols != input_cache.cols) 
+            d_input.allocate(input_cache.rows, input_cache.cols);
+        
+        if (!dZ_temp.allocated || dZ_temp.rows != d_output.rows || dZ_temp.cols != d_output.cols)
+            dZ_temp.allocate(d_output.rows, d_output.cols);
+
+        if (!dW.allocated) dW.allocate(W.rows, W.cols);
+        if (!db.allocated) db.allocate(b.rows, b.cols);
+
+        // 1. ReLU Backward: dZ = d_output * (output > 0)
+        // We use 'output' (which is A) as the proxy for Z. A > 0 implies Z > 0.
+        reluBackward(d_output, output, dZ_temp);
+
+        // 2. Linear Backward using dZ_temp
+        matrixMultiplyTransposeA(input_cache, dZ_temp, dW);
+        computeBiasGradient(dZ_temp, db);
+        matrixMultiplyTransposeB(dZ_temp, W, d_input);
+
+        updateWeights(W, dW, learning_rate);
+        updateWeights(b, db, learning_rate);
+
         return d_input;
     }
 };
