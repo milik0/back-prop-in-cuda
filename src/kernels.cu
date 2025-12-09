@@ -392,7 +392,8 @@ __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* 
     int col = bx * TILE_SIZE + tx;
 
     __shared__ float As[TILE_SIZE][TILE_SIZE];
-    __shared__ float Bs[TILE_SIZE][TILE_SIZE];
+    // Pad shared memory to avoid bank conflicts when accessing columns
+    __shared__ float Bs[TILE_SIZE][TILE_SIZE + 1];
 
     float sum = 0.0f;
 
