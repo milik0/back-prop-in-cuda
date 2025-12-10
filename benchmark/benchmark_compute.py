@@ -258,6 +258,12 @@ def benchmark_cuda(layer_sizes):
     try:
         result = subprocess.run([executable], capture_output=True, text=True, timeout=120)
         
+        # Debug: print output if parsing fails
+        if result.returncode != 0:
+            print(f"CUDA execution failed with return code {result.returncode}")
+            print(f"stderr: {result.stderr}")
+            return None
+        
         # Parse time from output
         for line in result.stdout.split('\n'):
             if "Training Time:" in line:
@@ -265,6 +271,8 @@ def benchmark_cuda(layer_sizes):
                 return float(time_str)
         
         print("Could not parse training time from CUDA output")
+        print(f"stdout: {result.stdout}")
+        print(f"stderr: {result.stderr}")
         return None
         
     except Exception as e:
