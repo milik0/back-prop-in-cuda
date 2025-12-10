@@ -8,9 +8,11 @@ The benchmark suite compares:
 - **CUDA Implementation**: Custom CUDA kernels for matrix operations and backpropagation
 - **PyTorch Implementation**: Equivalent network using PyTorch's optimized operations
 
-Two test cases are benchmarked:
+Four test cases are benchmarked:
 1. **MNIST Classification**: 784 → 256 → 10 network on MNIST digit recognition
-2. **XOR Problem**: 2 → 8 → 1 network on the classic XOR logic problem
+2. **Fashion-MNIST Classification**: 784 → 128 → 10 network on Fashion-MNIST clothing recognition
+3. **Breast Cancer Wisconsin**: 30 → 16 → 8 → 1 network for binary classification
+4. **XOR Problem**: 2 → 8 → 1 network on the classic XOR logic problem
 
 ## Setup
 
@@ -28,16 +30,22 @@ pip3 install -r benchmark/requirements.txt
 Required packages:
 - `torch` (PyTorch)
 - `numpy`
+- `pandas`
+- `scikit-learn`
 - `matplotlib`
 
 ### 2. Build CUDA Executables
 
 ```bash
-make          # Build MNIST executable
-make xor      # Build XOR executable
+make                # Build MNIST executable
+make xor            # Build XOR executable
+make fashion-mnist  # Build Fashion-MNIST executable
+make breast-cancer  # Build Breast Cancer executable
 ```
 
-### 3. Download MNIST Data
+### 3. Download Datasets
+
+#### MNIST Data
 
 If you haven't already, download the MNIST dataset:
 
@@ -48,14 +56,38 @@ mkdir -p ~/data
 # Download and extract training data
 wget -P ~/data/ https://ossci-datasets.s3.amazonaws.com/mnist/train-images-idx3-ubyte.gz
 wget -P ~/data/ https://ossci-datasets.s3.amazonaws.com/mnist/train-labels-idx1-ubyte.gz
-gzip -d ~/data/train-images-idx3-ubyte.gz
-gzip -d ~/data/train-labels-idx1-ubyte.gz
-
-# Download and extract test data
-wget -P ~/data/ https://ossci-datasets.s3.amazonaws.com/mnist/t10k-images-idx3-ubyte.gz
-wget -P ~/data/ https://ossci-datasets.s3.amazonaws.com/mnist/t10k-labels-idx1-ubyte.gz
 gzip -d ~/data/t10k-images-idx3-ubyte.gz
 gzip -d ~/data/t10k-labels-idx1-ubyte.gz
+```
+
+#### Fashion-MNIST Data
+
+```bash
+# Create directory
+mkdir -p ~/data/fashion_mnist
+
+# Download and extract Fashion-MNIST
+wget -P ~/data/fashion_mnist/ http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/train-images-idx3-ubyte.gz
+wget -P ~/data/fashion_mnist/ http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/train-labels-idx1-ubyte.gz
+wget -P ~/data/fashion_mnist/ http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/t10k-images-idx3-ubyte.gz
+wget -P ~/data/fashion_mnist/ http://fashion-mnist.s3-website.eu-central-1.amazonaws.com/t10k-labels-idx1-ubyte.gz
+
+# Decompress
+gzip -d ~/data/fashion_mnist/*.gz
+```
+
+#### Breast Cancer Wisconsin Data
+
+```bash
+# Download from Kaggle or UCI ML Repository
+# Option 1: From Kaggle (requires Kaggle account)
+kaggle datasets download -d uciml/breast-cancer-wisconsin-data -p ~/data
+unzip ~/data/breast-cancer-wisconsin-data.zip -d ~/data
+mv ~/data/data.csv ~/data/breast_cancer.csv
+
+# Option 2: Manual download
+# Visit: https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data
+# Download data.csv and save as ~/data/breast_cancer.csv
 ```
 
 ## Running Benchmarks
@@ -68,9 +100,27 @@ make benchmark-all
 
 This will:
 1. Run MNIST benchmark (CUDA vs PyTorch)
-2. Run XOR benchmark (CUDA vs PyTorch)
-3. Generate visualization plots
+2. Run Fashion-MNIST benchmark (CUDA vs PyTorch)
+3. Run Breast Cancer benchmark (CUDA vs PyTorch)
+4. Run XOR benchmark (CUDA vs PyTorch)
+5. Generate visualization plots
 
+### Run Individual Benchmarks
+
+**MNIST Benchmark:**
+```bash
+make benchmark-mnist
+```
+
+**Fashion-MNIST Benchmark:**
+```bash
+make benchmark-fashion-mnist
+```
+
+**Breast Cancer Benchmark:**
+```bash
+make benchmark-breast-cancer
+```
 ### Run Individual Benchmarks
 
 **MNIST Benchmark:**
