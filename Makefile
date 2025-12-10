@@ -37,6 +37,14 @@ mnist: $(BIN_DIR)/mlp_mnist_test
 	@echo "Building MLP XOR Test..."
 	./$(BIN_DIR)/mlp_mnist_test
 
+fashion-mnist: $(BIN_DIR)/mlp_fashion_mnist_test
+	@echo "Building MLP Fashion-MNIST Test..."
+	./$(BIN_DIR)/mlp_fashion_mnist_test
+
+breast-cancer: $(BIN_DIR)/mlp_breast_cancer_test
+	@echo "Building MLP Breast Cancer Test..."
+	./$(BIN_DIR)/mlp_breast_cancer_test
+
 
 # Benchmark targets
 benchmark-mnist: $(TARGET)
@@ -45,6 +53,16 @@ benchmark-mnist: $(TARGET)
 benchmark-xor: $(BIN_DIR)/mlp_xor_test
 	@echo "Running XOR benchmark..."
 	cd benchmark && $(PYTHON) benchmark_xor.py
+
+benchmark-fashion-mnist: $(TARGET)
+	@echo "Running Fashion-MNIST benchmark..."
+	cd benchmark && $(PYTHON) benchmark_fashion_mnist.py
+
+benchmark-breast-cancer: $(TARGET)
+	@echo "Running Breast Cancer benchmark..."
+	cd benchmark && $(PYTHON) benchmark_breast_cancer.py
+
+
 
 benchmark-all: $(TARGET) $(BIN_DIR)/mlp_xor_test
 	@echo "Running all benchmarks..."
