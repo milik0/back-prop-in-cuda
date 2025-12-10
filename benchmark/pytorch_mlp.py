@@ -439,10 +439,10 @@ def train_breast_cancer(model, device, data_path, epochs=50, batch_size=32, lr=0
     
     # Split train/test (80/20)
     train_size = int(len(X) * 0.8)
-    X_train = torch.from_numpy(X[:train_size])
-    y_train = torch.from_numpy(y[:train_size])
-    X_test = torch.from_numpy(X[train_size:])
-    y_test = torch.from_numpy(y[train_size:])
+    X_train = X[:train_size]
+    y_train = y[:train_size]
+    X_test = X[train_size:]
+    y_test = y[train_size:]
     
     X_train, y_train = X_train.to(device), y_train.to(device)
     X_test, y_test = X_test.to(device), y_test.to(device)
