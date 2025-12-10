@@ -236,7 +236,7 @@ def benchmark_cuda(layer_sizes):
     print(f"  Compiling CUDA code...")
     compile_cmd = [
         "nvcc",
-        "-arch=sm_75",
+        "-arch=sm_61",
         "-O3",
         "-std=c++17",
         "-o", executable,
