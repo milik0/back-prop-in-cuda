@@ -43,7 +43,7 @@ class DynamicMLP(nn.Module):
 # ==========================================
 # 2. CUDA C++ MLP Generator
 # ==========================================
-def generate_cuda_mlp(layer_sizes, output_path="src/main_benchmark_compute.cu"):
+def generate_cuda_mlp(layer_sizes, output_path="../src/main_benchmark_compute.cu"):
     """Generate CUDA code for dynamic MLP"""
     
     num_layers = len(layer_sizes) - 1
@@ -241,7 +241,7 @@ def benchmark_cuda(layer_sizes):
         "-std=c++17",
         "-o", executable,
         cuda_file,
-        "src/kernels.cu"
+        "../src/kernels.cu"
     ]
     
     try:
