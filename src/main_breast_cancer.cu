@@ -133,11 +133,11 @@ int main(int argc, char** argv) {
     int train_size = (int)(num_samples * 0.8);
     int test_size = num_samples - train_size;
     
-    // 2. Build Model (30 -> 16 -> 8 -> 1) - Binary classification
+    // 2. Build Model (9 -> 16 -> 8 -> 1) - Binary classification
     MLP model;
     
     // Layer 1
-    Linear* fc1 = new Linear(30, 16);
+    Linear* fc1 = new Linear(full_X.cols, 16);
     init_xavier(fc1->W); fc1->b.zeros();
     model.add(fc1);
     model.add(new ReLU());
@@ -160,7 +160,7 @@ int main(int argc, char** argv) {
     int num_batches = train_size / batch_size;
 
     Matrix batch_X, batch_Y, d_loss;
-    batch_X.allocate(batch_size, 30);
+    batch_X.allocate(batch_size, full_X.cols);
     batch_Y.allocate(batch_size, 1);
     d_loss.allocate(batch_size, 1);
 
@@ -168,8 +168,8 @@ int main(int argc, char** argv) {
 
     // Warmup
     for (int b = 0; b < 10 && b < num_batches; ++b) {
-        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 30,
-                              batch_size * 30 * sizeof(float), cudaMemcpyDeviceToDevice));
+        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * full_X.cols,
+                              batch_size * full_X.cols * sizeof(float), cudaMemcpyDeviceToDevice));
         CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size,
                               batch_size * sizeof(float), cudaMemcpyDeviceToDevice));
         Matrix preds = model.forward(batch_X);
@@ -186,8 +186,8 @@ int main(int argc, char** argv) {
 
         for (int b = 0; b < num_batches; ++b) {
             // Slice Batch
-            CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * 30,
-                                  batch_size * 30 * sizeof(float), cudaMemcpyDeviceToDevice));
+            CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + b * batch_size * full_X.cols,
+                                  batch_size * full_X.cols * sizeof(float), cudaMemcpyDeviceToDevice));
             CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + b * batch_size,
                                   batch_size * sizeof(float), cudaMemcpyDeviceToDevice));
 

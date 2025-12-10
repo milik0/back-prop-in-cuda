@@ -7,7 +7,7 @@ import json
 import time
 import subprocess
 import torch
-from pytorch_mlp import BreastCancerMLP, train_breast_cancer
+from pytorch_mlp import BreastCancerMLP, train_breast_cancer, load_breast_cancer_ubyte
 
 # Configuration
 CUDA_EXECUTABLE = "../bin/mlp_breast_cancer_test"
@@ -106,7 +106,13 @@ def benchmark_pytorch_breast_cancer(device='cuda'):
         print("Warning: CUDA not available, falling back to CPU")
         device = 'cpu'
     
-    model = BreastCancerMLP()
+    # First load data to determine input dimension
+    image_path = os.path.join(DATA_PATH, IMAGE_FILE)
+    label_path = os.path.join(DATA_PATH, LABEL_FILE)
+    X, y = load_breast_cancer_ubyte(image_path, label_path, 569)
+    input_dim = X.shape[1]
+    
+    model = BreastCancerMLP(input_dim=input_dim)
     
     try:
         history, total_time = train_breast_cancer(

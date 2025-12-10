@@ -78,11 +78,11 @@ class FashionMLP(nn.Module):
 class BreastCancerMLP(nn.Module):
     """
     MLP for Breast Cancer Wisconsin matching CUDA implementation
-    Architecture: 30 -> 16 -> 8 -> 1
+    Architecture: 9 -> 16 -> 8 -> 1
     """
-    def __init__(self):
+    def __init__(self, input_dim=9):
         super(BreastCancerMLP, self).__init__()
-        self.fc1 = nn.Linear(30, 16)
+        self.fc1 = nn.Linear(input_dim, 16)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Linear(16, 8)
         self.relu2 = nn.ReLU()
