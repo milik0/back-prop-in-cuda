@@ -8,6 +8,8 @@ OBJ_DIR = obj
 BIN_DIR = bin
 
 SRCS = $(SRC_DIR)/main.cu $(SRC_DIR)/kernels.cu $(SRC_DIR)/kernels_naive.cu $(SRC_DIR)/kernels_shared.cu $(SRC_DIR)/kernels_fused.cu $(SRC_DIR)/kernels_warp.cu
+KERNEL_SRCS = $(SRC_DIR)/kernels.cu $(SRC_DIR)/kernels_naive.cu $(SRC_DIR)/kernels_shared.cu $(SRC_DIR)/kernels_fused.cu $(SRC_DIR)/kernels_warp.cu
+KERNEL_OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(KERNEL_SRCS))
 OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRCS))
 TARGET = $(BIN_DIR)/mlp_test
 
@@ -21,11 +23,11 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu
 	@mkdir -p $(OBJ_DIR)
 	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
 
-$(BIN_DIR)/mlp_xor_test: $(OBJ_DIR)/main_xor.o $(OBJ_DIR)/kernels.o
+$(BIN_DIR)/mlp_xor_test: $(OBJ_DIR)/main_xor.o $(KERNEL_OBJS)
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
-$(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(OBJ_DIR)/kernels.o
+$(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(KERNEL_OBJS)
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
