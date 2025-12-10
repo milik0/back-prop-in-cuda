@@ -5,7 +5,6 @@
 #include <vector>
 #include <iomanip>
 #include <fstream>
-#include <sstream>
 #include <string>
 #include <chrono>
 
@@ -28,74 +27,82 @@ float calculate_accuracy(Matrix& preds, Matrix& targets) {
     return (float)hits / batch_size;
 }
 
-// Helper to load Breast Cancer Wisconsin dataset from CSV
-void loadBreastCancer(const std::string& csv_path, Matrix& X, Matrix& Y, int& num_samples) {
-    std::ifstream file(csv_path);
+// Helper to flip endianness (data is Big Endian)
+int reverseInt(int i) {
+    unsigned char c1, c2, c3, c4;
+    c1 = i & 255;
+    c2 = (i >> 8) & 255;
+    c3 = (i >> 16) & 255;
+    c4 = (i >> 24) & 255;
+    return ((int)c1 << 24) + ((int)c2 << 16) + ((int)c3 << 8) + c4;
+}
+
+// Helper to load Breast Cancer Wisconsin dataset from ubyte format
+void loadBreastCancer(const std::string& image_path, const std::string& label_path, 
+                      Matrix& X, Matrix& Y, int num_samples) {
+    
+    // --- Load Features (Images file) ---
+    std::ifstream file(image_path, std::ios::binary);
     if (!file.is_open()) {
-        std::cerr << "Error: Could not open " << csv_path << std::endl;
+        std::cerr << "Error: Could not open " << image_path << std::endl;
         exit(1);
     }
 
-    std::vector<std::vector<float>> data;
-    std::vector<float> labels;
-    std::string line;
+    int magic_number = 0, number_of_images = 0, n_rows = 0, n_cols = 0;
+    file.read((char*)&magic_number, sizeof(magic_number));
+    file.read((char*)&number_of_images, sizeof(number_of_images));
+    file.read((char*)&n_rows, sizeof(n_rows));
+    file.read((char*)&n_cols, sizeof(n_cols));
+
+    n_rows = reverseInt(n_rows);
+    n_cols = reverseInt(n_cols);
+    int input_dim = n_rows * n_cols;  // Should be 30 features
+
+    // Allocate Host Memory
+    std::vector<float> h_X(num_samples * input_dim);
     
-    // Skip header
-    std::getline(file, line);
-    
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string value;
-        std::vector<float> row;
-        
-        // Skip ID column
-        std::getline(ss, value, ',');
-        
-        // Read diagnosis (M=1, B=0)
-        std::getline(ss, value, ',');
-        float label = (value == "M") ? 1.0f : 0.0f;
-        labels.push_back(label);
-        
-        // Read features
-        while (std::getline(ss, value, ',')) {
-            row.push_back(std::stof(value));
-        }
-        data.push_back(row);
-    }
-    
-    num_samples = data.size();
-    int num_features = data[0].size();
-    
-    std::cout << "Loaded Breast Cancer data: " << num_samples << " samples, " 
-              << num_features << " features\n";
-    
-    // Normalize features (simple min-max normalization)
-    std::vector<float> min_vals(num_features, 1e9);
-    std::vector<float> max_vals(num_features, -1e9);
-    
-    for (const auto& row : data) {
-        for (size_t j = 0; j < row.size(); ++j) {
-            min_vals[j] = std::min(min_vals[j], row[j]);
-            max_vals[j] = std::max(max_vals[j], row[j]);
-        }
-    }
-    
-    std::vector<float> h_X(num_samples * num_features);
+    // Read feature data (already normalized in the ubyte format)
     for (int i = 0; i < num_samples; ++i) {
-        for (int j = 0; j < num_features; ++j) {
-            float normalized = (data[i][j] - min_vals[j]) / (max_vals[j] - min_vals[j] + 1e-8f);
-            h_X[i * num_features + j] = normalized;
+        for (int j = 0; j < input_dim; ++j) {
+            unsigned char temp = 0;
+            file.read((char*)&temp, sizeof(temp));
+            // Already normalized 0-255 -> 0.0-1.0
+            h_X[i * input_dim + j] = (float)temp / 255.0f;
         }
     }
     
     // Copy to GPU
-    X.allocate(num_samples, num_features);
+    X.allocate(num_samples, input_dim);
     X.copyFromHost(h_X);
-    
-    Y.allocate(num_samples, 1);
-    Y.copyFromHost(labels);
-    
     file.close();
+
+    // --- Load Labels ---
+    std::ifstream label_file(label_path, std::ios::binary);
+    if (!label_file.is_open()) {
+        std::cerr << "Error: Could not open " << label_path << std::endl;
+        exit(1);
+    }
+
+    int label_magic = 0, number_of_labels = 0;
+    label_file.read((char*)&label_magic, sizeof(label_magic));
+    label_file.read((char*)&number_of_labels, sizeof(number_of_labels));
+
+    std::vector<float> h_Y(num_samples);
+
+    for (int i = 0; i < num_samples; ++i) {
+        unsigned char label = 0;
+        label_file.read((char*)&label, sizeof(label));
+        // Binary label: 0 or 1
+        h_Y[i] = (float)label;
+    }
+
+    // Copy to GPU
+    Y.allocate(num_samples, 1);
+    Y.copyFromHost(h_Y);
+    label_file.close();
+
+    std::cout << "Loaded Breast Cancer: " << num_samples << " samples, " 
+              << input_dim << " features." << std::endl;
 }
 
 // Helper to init weights
@@ -112,14 +119,15 @@ void init_xavier(Matrix& m) {
 int main(int argc, char** argv) {
     srand(1337);
 
-    // Get data path from command line or use default
-    std::string csv_path = (argc > 1) ? argv[1] : "data/breast_cancer.csv";
+    // Get data paths from command line or use defaults
+    std::string image_path = (argc > 1) ? argv[1] : "data/bcw_original-images-ubyte";
+    std::string label_path = (argc > 2) ? argv[2] : "data/bcw_original-labels-ubyte";
 
     // 1. Load Breast Cancer Data
     std::cout << "Loading Breast Cancer Wisconsin Dataset...\n";
     Matrix full_X, full_Y;
-    int num_samples;
-    loadBreastCancer(csv_path, full_X, full_Y, num_samples);
+    int num_samples = 569;  // Total samples in Breast Cancer Wisconsin dataset
+    loadBreastCancer(image_path, label_path, full_X, full_Y, num_samples);
 
     // Split into train/test (80/20)
     int train_size = (int)(num_samples * 0.8);

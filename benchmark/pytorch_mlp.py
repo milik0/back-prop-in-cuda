@@ -402,7 +402,27 @@ def train_fashion_mnist(model, device, data_path, epochs=10, batch_size=64, lr=0
     return history, total_time
 
 
-def train_breast_cancer(model, device, csv_path, epochs=50, batch_size=32, lr=0.01, seed=1337):
+def load_breast_cancer_ubyte(image_path, label_path, num_samples):
+    """
+    Load Breast Cancer Wisconsin data from ubyte format
+    """
+    import struct
+    
+    # Load features (images file)
+    with open(image_path, 'rb') as f:
+        magic, num, rows, cols = struct.unpack('>IIII', f.read(16))
+        features = np.fromfile(f, dtype=np.uint8, count=num_samples * rows * cols)
+        features = features.reshape(num_samples, rows * cols).astype(np.float32) / 255.0
+    
+    # Load labels
+    with open(label_path, 'rb') as f:
+        magic, num = struct.unpack('>II', f.read(8))
+        labels = np.fromfile(f, dtype=np.uint8, count=num_samples).astype(np.float32).reshape(-1, 1)
+    
+    return torch.from_numpy(features), torch.from_numpy(labels)
+
+
+def train_breast_cancer(model, device, data_path, epochs=50, batch_size=32, lr=0.01, seed=1337):
     """
     Train MLP on Breast Cancer Wisconsin matching CUDA implementation
     Returns: training history and timing information
@@ -410,23 +430,12 @@ def train_breast_cancer(model, device, csv_path, epochs=50, batch_size=32, lr=0.
     torch.manual_seed(seed)
     np.random.seed(seed)
     
-    # Load data from CSV
-    import pandas as pd
-    from sklearn.preprocessing import MinMaxScaler
+    # Load data from ubyte format
+    image_path = f"{data_path}/bcw_original-images-ubyte"
+    label_path = f"{data_path}/bcw_original-labels-ubyte"
     
-    df = pd.read_csv(csv_path)
-    
-    # Drop ID column and encode diagnosis
-    df = df.drop('id', axis=1)
-    df['diagnosis'] = (df['diagnosis'] == 'M').astype(float)
-    
-    # Separate features and labels
-    X = df.drop('diagnosis', axis=1).values.astype(np.float32)
-    y = df['diagnosis'].values.astype(np.float32).reshape(-1, 1)
-    
-    # Normalize features
-    scaler = MinMaxScaler()
-    X = scaler.fit_transform(X)
+    num_samples = 569  # Total samples in Breast Cancer Wisconsin dataset
+    X, y = load_breast_cancer_ubyte(image_path, label_path, num_samples)
     
     # Split train/test (80/20)
     train_size = int(len(X) * 0.8)

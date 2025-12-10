@@ -12,7 +12,9 @@ from pytorch_mlp import BreastCancerMLP, train_breast_cancer
 # Configuration
 CUDA_EXECUTABLE = "../bin/mlp_breast_cancer_test"
 RESULTS_DIR = "./results"
-CSV_PATH = os.path.expanduser("~/data/breast_cancer.csv")
+DATA_PATH = "../data"  # Path to ubyte files
+IMAGE_FILE = "bcw_original-images-ubyte"
+LABEL_FILE = "bcw_original-labels-ubyte"
 EPOCHS = 50
 BATCH_SIZE = 32
 LEARNING_RATE = 0.01
@@ -31,10 +33,14 @@ def benchmark_cuda_breast_cancer():
     
     start_time = time.time()
     
+    # Prepare data paths
+    image_path = os.path.join(DATA_PATH, IMAGE_FILE)
+    label_path = os.path.join(DATA_PATH, LABEL_FILE)
+    
     # Run CUDA executable and capture output
     try:
         result = subprocess.run(
-            [CUDA_EXECUTABLE, CSV_PATH],
+            [CUDA_EXECUTABLE, image_path, label_path],
             capture_output=True,
             text=True,
             timeout=300  # 5 minute timeout
@@ -106,7 +112,7 @@ def benchmark_pytorch_breast_cancer(device='cuda'):
         history, total_time = train_breast_cancer(
             model=model,
             device=device,
-            csv_path=CSV_PATH,
+            data_path=DATA_PATH,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             lr=LEARNING_RATE
@@ -190,14 +196,21 @@ def main():
     print(f"  Epochs: {EPOCHS}")
     print(f"  Batch Size: {BATCH_SIZE}")
     print(f"  Learning Rate: {LEARNING_RATE}")
-    print(f"  CSV Path: {CSV_PATH}")
+    print(f"  Data Path: {DATA_PATH}")
     print()
     
-    # Check if data exists
-    if not os.path.exists(CSV_PATH):
-        print(f"Error: CSV file not found at {CSV_PATH}")
-        print("Please download Breast Cancer Wisconsin dataset first")
-        print("Download from: https://www.kaggle.com/datasets/uciml/breast-cancer-wisconsin-data")
+    # Check if data files exist
+    image_path = os.path.join(DATA_PATH, IMAGE_FILE)
+    label_path = os.path.join(DATA_PATH, LABEL_FILE)
+    
+    if not os.path.exists(image_path):
+        print(f"Error: Image file not found at {image_path}")
+        print("Please ensure the Breast Cancer Wisconsin dataset is in ubyte format")
+        return
+    
+    if not os.path.exists(label_path):
+        print(f"Error: Label file not found at {label_path}")
+        print("Please ensure the Breast Cancer Wisconsin dataset is in ubyte format")
         return
     
     results = []
