@@ -1,0 +1,58 @@
+[
+  {
+    "implementation": "CUDA",
+    "total_time": 5.618261814117432,
+    "kernel_time": 4.6113,
+    "train_accuracies": [
+      93.0646,
+      97.0418,
+      98.1073,
+      98.681,
+      99.1045,
+      99.4214,
+      99.6181,
+      99.7632,
+      99.8666,
+      99.9333,
+      99.9633,
+      99.9817,
+      99.99,
+      99.995,
+      99.9983,
+      100.0,
+      100.0,
+      100.0,
+      100.0,
+      100.0
+    ],
+    "test_accuracy": 98.06,
+    "epochs": 5,
+    "batch_size": 64,
+    "learning_rate": 0.01,
+    "output": "Loading MNIST Data...\nLoaded MNIST: 60000 samples.\nStarting Training (20 epochs, batch size 64)...\nEpoch 0 | Avg Accuracy: 93.0646% | Avg Fwd: 0.0782164 ms | Avg Bwd: 0.17096 ms\nEpoch 1 | Avg Accuracy: 97.0418% | Avg Fwd: 0.0690204 ms | Avg Bwd: 0.153156 ms\nEpoch 2 | Avg Accuracy: 98.1073% | Avg Fwd: 0.0669654 ms | Avg Bwd: 0.149967 ms\nEpoch 3 | Avg Accuracy: 98.681% | Avg Fwd: 0.0668274 ms | Avg Bwd: 0.149026 ms\nEpoch 4 | Avg Accuracy: 99.1045% | Avg Fwd: 0.0666754 ms | Avg Bwd: 0.148165 ms\nEpoch 5 | Avg Accuracy: 99.4214% | Avg Fwd: 0.0666831 ms | Avg Bwd: 0.148518 ms\nEpoch 6 | Avg Accuracy: 99.6181% | Avg Fwd: 0.0667854 ms | Avg Bwd: 0.148811 ms\nEpoch 7 | Avg Accuracy: 99.7632% | Avg Fwd: 0.0667087 ms | Avg Bwd: 0.14861 ms\nEpoch 8 | Avg Accuracy: 99.8666% | Avg Fwd: 0.0669358 ms | Avg Bwd: 0.148998 ms\nEpoch 9 | Avg Accuracy: 99.9333% | Avg Fwd: 0.066896 ms | Avg Bwd: 0.149058 ms\nEpoch 10 | Avg Accuracy: 99.9633% | Avg Fwd: 0.0666612 ms | Avg Bwd: 0.148638 ms\nEpoch 11 | Avg Accuracy: 99.9817% | Avg Fwd: 0.0665797 ms | Avg Bwd: 0.148311 ms\nEpoch 12 | Avg Accuracy: 99.99% | Avg Fwd: 0.0667015 ms | Avg Bwd: 0.148699 ms\nEpoch 13 | Avg Accuracy: 99.995% | Avg Fwd: 0.0665242 ms | Avg Bwd: 0.148258 ms\nEpoch 14 | Avg Accuracy: 99.9983% | Avg Fwd: 0.0667245 ms | Avg Bwd: 0.148726 ms\nEpoch 15 | Avg Accuracy: 100% | Avg Fwd: 0.0666058 ms | Avg Bwd: 0.14835 ms\nEpoch 16 | Avg Accuracy: 100% | Avg Fwd: 0.0668394 ms | Avg Bwd: 0.14882 ms\nEpoch 17 | Avg Accuracy: 100% | Avg Fwd: 0.0666464 ms | Avg Bwd: 0.148505 ms\nEpoch 18 | Avg Accuracy: 100% | Avg Fwd: 0.067065 ms | Avg Bwd: 0.148912 ms\nEpoch 19 | Avg Accuracy: 100% | Avg Fwd: 0.0666531 ms | Avg Bwd: 0.148577 ms\n\nTraining Time: 4.6113 seconds\n\n=== Final Evaluation on Test Set ===\nLoaded MNIST: 10000 samples.\nTest Set Accuracy: 98.06%\n"
+  },
+  {
+    "implementation": "PyTorch (cuda)",
+    "device": "cuda",
+    "total_time": 4.006994247436523,
+    "training_time": 3.821967601776123,
+    "train_accuracies": [
+      80.63300426894344,
+      89.90795090715048,
+      91.20364194236926,
+      92.05909818569904,
+      92.71111259338313
+    ],
+    "test_accuracy": 93.32000000000001,
+    "epoch_times": [
+      0.7891871929168701,
+      0.7234621047973633,
+      0.7537736892700195,
+      0.7960777282714844,
+      0.7594668865203857
+    ],
+    "epochs": 5,
+    "batch_size": 64,
+    "learning_rate": 0.01
+  }
+]

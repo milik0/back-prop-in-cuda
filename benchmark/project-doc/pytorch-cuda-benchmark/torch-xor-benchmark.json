@@ -1,0 +1,68 @@
+[
+  {
+    "implementation": "CUDA",
+    "total_time": 0.3604767322540283,
+    "kernel_time": 0.287673,
+    "epochs": [
+      0,
+      1000,
+      2000,
+      3000,
+      4000,
+      5000,
+      6000,
+      7000,
+      8000,
+      9000
+    ],
+    "losses": [
+      0.192111,
+      6.21725e-14,
+      4.35207e-14,
+      4.79616e-14,
+      4.79616e-14,
+      4.79616e-14,
+      4.79616e-14,
+      4.79616e-14,
+      4.79616e-14,
+      4.79616e-14
+    ],
+    "final_loss": 4.79616e-14,
+    "learning_rate": 0.01,
+    "total_epochs": 10000,
+    "output": "Training on XOR (10000 epochs)...\nEpoch     0 | Loss: 0.192111\nEpoch  1000 | Loss: 6.21725e-14\nEpoch  2000 | Loss: 4.35207e-14\nEpoch  3000 | Loss: 4.79616e-14\nEpoch  4000 | Loss: 4.79616e-14\nEpoch  5000 | Loss: 4.79616e-14\nEpoch  6000 | Loss: 4.79616e-14\nEpoch  7000 | Loss: 4.79616e-14\nEpoch  8000 | Loss: 4.79616e-14\nEpoch  9000 | Loss: 4.79616e-14\n\nTraining Time: 0.287673 seconds\n\n=== Final Predictions ===\nInput (0, 0) -> Pred: 0.000000119 (Target: 0)\nInput (0, 1) -> Pred: 0.999999702 (Target: 1)\nInput (1, 0) -> Pred: 0.999999821 (Target: 1)\nInput (1, 1) -> Pred: 0.000000238 (Target: 0)\n"
+  },
+  {
+    "implementation": "PyTorch (cuda)",
+    "device": "cuda",
+    "total_time": 6.350650787353516,
+    "training_time": 6.342839956283569,
+    "epochs": [
+      0,
+      1000,
+      2000,
+      3000,
+      4000,
+      5000,
+      6000,
+      7000,
+      8000,
+      9000
+    ],
+    "losses": [
+      0.3536570072174072,
+      0.08732137084007263,
+      0.007840592414140701,
+      0.000199101836187765,
+      3.656339686131105e-06,
+      6.395002571935038e-08,
+      1.1198513227839157e-09,
+      9.649214760543146e-11,
+      4.136274656119099e-11,
+      4.136274656119099e-11
+    ],
+    "final_loss": 4.136274656119099e-11,
+    "learning_rate": 0.01,
+    "total_epochs": 10000
+  }
+]
