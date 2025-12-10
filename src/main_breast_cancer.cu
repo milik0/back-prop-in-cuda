@@ -221,8 +221,8 @@ int main(int argc, char** argv) {
     
     for (int b = 0; b < test_batches; ++b) {
         int offset = train_size + b * batch_size;
-        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + offset * 30,
-                              batch_size * 30 * sizeof(float), cudaMemcpyDeviceToDevice));
+        CHECK_CUDA(cudaMemcpy(batch_X.data, full_X.data + offset * full_X.cols,
+                              batch_size * full_X.cols * sizeof(float), cudaMemcpyDeviceToDevice));
         CHECK_CUDA(cudaMemcpy(batch_Y.data, full_Y.data + offset,
                               batch_size * sizeof(float), cudaMemcpyDeviceToDevice));
         
