@@ -59,10 +59,10 @@ int main(int argc, char** argv) {
     srand(1337); 
 
     // Get data paths from command line arguments or use defaults
-    std::string train_images = (argc > 1) ? argv[1] : "data/train-images-idx3-ubyte";
-    std::string train_labels = (argc > 2) ? argv[2] : "data/train-labels-idx1-ubyte";
-    std::string test_images = (argc > 3) ? argv[3] : "data/t10k-images-idx3-ubyte";
-    std::string test_labels = (argc > 4) ? argv[4] : "data/t10k-labels-idx1-ubyte";
+    std::string train_images = (argc > 1) ? argv[1] : "data/fashion_mnist/train-images-idx3-ubyte";
+    std::string train_labels = (argc > 2) ? argv[2] : "data/fashion_mnist/train-labels-idx1-ubyte";
+    std::string test_images = (argc > 3) ? argv[3] : "data/fashion_mnist/t10k-images-idx3-ubyte";
+    std::string test_labels = (argc > 4) ? argv[4] : "data/fashion_mnist/t10k-labels-idx1-ubyte";
 
     // 1. Load Fashion-MNIST Data
     std::cout << "Loading Fashion-MNIST Data...\n";
