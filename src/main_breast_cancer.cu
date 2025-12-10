@@ -120,8 +120,8 @@ int main(int argc, char** argv) {
     srand(1337);
 
     // Get data paths from command line or use defaults
-    std::string image_path = (argc > 1) ? argv[1] : "data/bcw_original-images-ubyte";
-    std::string label_path = (argc > 2) ? argv[2] : "data/bcw_original-labels-ubyte";
+    std::string image_path = (argc > 1) ? argv[1] : "/home/khaled/data/bcw_original-images-ubyte";
+    std::string label_path = (argc > 2) ? argv[2] : "/home/khaled/data/bcw_original-labels-ubyte";
 
     // 1. Load Breast Cancer Data
     std::cout << "Loading Breast Cancer Wisconsin Dataset...\n";
