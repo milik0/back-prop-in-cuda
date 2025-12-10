@@ -69,6 +69,9 @@ benchmark-breast-cancer: $(TARGET)
 	@echo "Running Breast Cancer benchmark..."
 	cd benchmark && $(PYTHON) benchmark_breast_cancer.py
 
+benchmark-compute:
+	@echo "Running layer comparison benchmark..."
+	cd benchmark && $(PYTHON) benchmark_compute.py
 
 
 benchmark-all: $(TARGET) $(BIN_DIR)/mlp_xor_test
