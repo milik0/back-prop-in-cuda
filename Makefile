@@ -7,7 +7,9 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 
-SRCS = $(SRC_DIR)/main.cu $(SRC_DIR)/kernels.cu
+SRCS = $(SRC_DIR)/main.cu $(SRC_DIR)/kernels.cu $(SRC_DIR)/kernels_naive.cu $(SRC_DIR)/kernels_shared.cu $(SRC_DIR)/kernels_fused.cu $(SRC_DIR)/kernels_warp.cu
+KERNEL_SRCS = $(SRC_DIR)/kernels.cu $(SRC_DIR)/kernels_naive.cu $(SRC_DIR)/kernels_shared.cu $(SRC_DIR)/kernels_fused.cu $(SRC_DIR)/kernels_warp.cu
+KERNEL_OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(KERNEL_SRCS))
 OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRCS))
 TARGET = $(BIN_DIR)/mlp_test
 
@@ -43,6 +45,8 @@ xor: $(BIN_DIR)/mlp_xor_test
 mnist: $(BIN_DIR)/mlp_mnist_test
 	@echo "Building MLP XOR Test..."
 	./$(BIN_DIR)/mlp_mnist_test
+<<<<<<< HEAD
+=======
 
 fashion-mnist: $(BIN_DIR)/mlp_fashion_mnist_test
 	@echo "Building MLP Fashion-MNIST Test..."
@@ -51,6 +55,7 @@ fashion-mnist: $(BIN_DIR)/mlp_fashion_mnist_test
 breast-cancer: $(BIN_DIR)/mlp_breast_cancer_test
 	@echo "Building MLP Breast Cancer Test..."
 	./$(BIN_DIR)/mlp_breast_cancer_test
+>>>>>>> main
 
 
 # Benchmark targets

@@ -6,93 +6,162 @@
 #include <iomanip>
 #include <chrono>
 
-// Helper to calculate MSE on CPU (for logging)
-float calculate_mse_cpu(Matrix& preds, Matrix& target) {
-    std::vector<float> h_p, h_t;
-    preds.copyToHost(h_p);
-    target.copyToHost(h_t);
-    
-    float sum_sq_diff = 0.0f;
-    for (size_t i = 0; i < h_p.size(); ++i) {
-        float diff = h_p[i] - h_t[i];
-        sum_sq_diff += diff * diff;
-    }
-    return sum_sq_diff / h_p.size();
-}
+#include "utils.cuh"
+#include "kernels_variants.cuh"
+#include "mlp.cuh"
+#include <iostream>
+#include <vector>
+#include <iomanip>
+#include <chrono>
+#include <fstream>
 
-// Helper to init weights (Xavier/Random)
-void randomize(Matrix& m, float min = -0.5f, float max = 0.5f) {
+struct BenchmarkResult {
+    std::string name;
+    float avg_forward_ms;
+    float avg_backward_ms;
+    float total_time_s;
+};
+
+// Helper to init weights
+void init_xavier(Matrix& m) {
+    float scale = sqrt(2.0f / m.rows);
     std::vector<float> host_data(m.rows * m.cols);
     for (size_t i = 0; i < host_data.size(); ++i) {
-        host_data[i] = min + static_cast<float>(rand()) / (static_cast<float>(RAND_MAX / (max - min)));
+        float r = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        host_data[i] = (r * 2.0f - 1.0f) * scale;
     }
     m.copyFromHost(host_data);
 }
 
-float train(MLP& model, Matrix& X, Matrix& Y, int epochs, float lr) {
-    Matrix d_loss;
-    d_loss.allocate(Y.rows, Y.cols);
+// MSE Loss Layer
+class MSELoss : public Layer {
+public:
+    Matrix output;
+    Matrix d_input;
 
-    std::cout << "Training on XOR (" << epochs << " epochs)...\n";
-    
-    // Warmup: run a few iterations to initialize everything
-    for (int i = 0; i < 10; ++i) {
-        Matrix preds = model.forward(X);
-        computeMSEGradient(preds, Y, d_loss);
-        model.backward(d_loss, lr);
+    MSELoss(KernelMode m) : Layer(m) {}
+    ~MSELoss() { 
+        output.free(); 
+        d_input.free(); 
     }
-    
-    // Synchronize GPU before timing
-    cudaDeviceSynchronize();
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    
-    for (int i = 0; i < epochs; ++i) {
-        // Forward
-        Matrix preds = model.forward(X);
 
-        // Log every 1000 steps
-        if (i % 1000 == 0) {
-            float loss = calculate_mse_cpu(preds, Y);
-            std::cout << "Epoch " << std::setw(5) << i << " | Loss: " << loss << std::endl;
+    Matrix forward(const Matrix& input) override {
+        if (!output.allocated || output.rows != input.rows || output.cols != input.cols) {
+            output.allocate(input.rows, input.cols);
         }
+        CHECK_CUDA(cudaMemcpy(output.data, input.data, input.rows * input.cols * sizeof(float), cudaMemcpyDeviceToDevice));
+        return output;
+    }
+
+    Matrix backward(const Matrix& target, float learning_rate) override {
+        if (!d_input.allocated || d_input.rows != target.rows || d_input.cols != target.cols) 
+            d_input.allocate(target.rows, target.cols);
+        
+        DISPATCH(computeMSEGradient, output, target, d_input);
+        return d_input;
+    }
+};
+
+BenchmarkResult run_benchmark(KernelMode mode, std::string name, Matrix& X, Matrix& Y, int epochs) {
+    std::cout << "\n========================================\n";
+    std::cout << "Running Benchmark: " << name << "\n";
+    std::cout << "========================================\n";
+
+    srand(1337); 
+
+    MLP model;
+    
+    // Layer 1: Input (2) -> Hidden (8) with ReLU
+    LinearReLU* fc1 = new LinearReLU(2, 8, mode);
+    init_xavier(fc1->W); fc1->b.zeros();
+    model.add(fc1);
+
+    // Layer 2: Hidden (8) -> Output (1) (Linear)
+    Linear* fc2 = new Linear(8, 1, mode);
+    init_xavier(fc2->W); fc2->b.zeros();
+    model.add(fc2);
+
+    // Loss Layer
+    model.add(new MSELoss(mode));
+
+    float learning_rate = 0.1f;
+
+    // Warmup
+    for (int i = 0; i < 10; ++i) {
+        model.forward(X);
+        model.backward(Y, learning_rate);
+    }
+    cudaDeviceSynchronize();
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    cudaEvent_t start, stop;
+    CHECK_CUDA(cudaEventCreate(&start));
+    CHECK_CUDA(cudaEventCreate(&stop));
+
+    float total_forward_ms = 0.0f;
+    float total_backward_ms = 0.0f;
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Forward
+        CHECK_CUDA(cudaEventRecord(start));
+        Matrix preds = model.forward(X);
+        CHECK_CUDA(cudaEventRecord(stop));
+        CHECK_CUDA(cudaEventSynchronize(stop));
+        float milliseconds = 0;
+        CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+        total_forward_ms += milliseconds;
 
         // Backward
-        computeMSEGradient(preds, Y, d_loss);
-        model.backward(d_loss, lr);
+        CHECK_CUDA(cudaEventRecord(start));
+        model.backward(Y, learning_rate);
+        CHECK_CUDA(cudaEventRecord(stop));
+        CHECK_CUDA(cudaEventSynchronize(stop));
+        CHECK_CUDA(cudaEventElapsedTime(&milliseconds, start, stop));
+        total_backward_ms += milliseconds;
     }
-    
-    // Synchronize GPU after training
+
     cudaDeviceSynchronize();
-    
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
-    float training_time = elapsed.count();
     
-    d_loss.free();
-    return training_time;
+    float avg_fwd = total_forward_ms / epochs;
+    float avg_bwd = total_backward_ms / epochs;
+    float total_time = elapsed.count();
+
+    std::cout << "Total Time: " << total_time << " s\n";
+    std::cout << "Average Forward: " << avg_fwd << " ms\n";
+    std::cout << "Average Backward: " << avg_bwd << " ms\n";
+
+    CHECK_CUDA(cudaEventDestroy(start));
+    CHECK_CUDA(cudaEventDestroy(stop));
+
+    return {name, avg_fwd, avg_bwd, total_time};
+}
+
+void write_results_to_json(const std::vector<BenchmarkResult>& results, const std::string& filename) {
+    std::ofstream out(filename);
+    out << "[\n";
+    for (size_t i = 0; i < results.size(); ++i) {
+        out << "  {\n";
+        out << "    \"name\": \"" << results[i].name << "\",\n";
+        out << "    \"avg_forward_ms\": " << results[i].avg_forward_ms << ",\n";
+        out << "    \"avg_backward_ms\": " << results[i].avg_backward_ms << ",\n";
+        out << "    \"total_time_s\": " << results[i].total_time_s << "\n";
+        out << "  }" << (i < results.size() - 1 ? "," : "") << "\n";
+    }
+    out << "]\n";
+    out.close();
+    std::cout << "Benchmark results written to " << filename << "\n";
 }
 
 int main() {
-    srand(1337); 
-
-    // ==========================================
-    // 1. Define XOR Dataset
-    // ==========================================
-    int batch_size = 4;
-    int input_dim = 2;
-    int hidden_dim = 8; // Enough neurons to solve XOR
-    int output_dim = 1; // Output probability (0 or 1)
-
-    // Inputs: (0,0), (0,1), (1,0), (1,1)
+    // Define XOR Data
     std::vector<float> h_X = {
         0.0f, 0.0f,
         0.0f, 1.0f,
         1.0f, 0.0f,
         1.0f, 1.0f
     };
-
-    // Targets: 0, 1, 1, 0
     std::vector<float> h_Y = {
         0.0f,
         1.0f,
@@ -100,56 +169,22 @@ int main() {
         0.0f
     };
 
-    Matrix d_X, d_Y;
-    d_X.allocate(batch_size, input_dim);
-    d_Y.allocate(batch_size, output_dim);
-    
-    // Copy data to GPU
-    d_X.copyFromHost(h_X);
-    d_Y.copyFromHost(h_Y);
+    Matrix X, Y;
+    X.allocate(4, 2);
+    Y.allocate(4, 1);
+    X.copyFromHost(h_X);
+    Y.copyFromHost(h_Y);
 
-    // ==========================================
-    // 2. Build Model
-    // ==========================================
-    MLP model;
-    
-    // Layer 1: 2 -> 8 (ReLU)
-    Linear* fc1 = new Linear(input_dim, hidden_dim);
-    randomize(fc1->W); randomize(fc1->b);
-    model.add(fc1);
-    
-    model.add(new ReLU());
+    int epochs = 10000;
 
-    // Layer 2: 8 -> 1 (Linear output for now)
-    // Note: Usually we'd use Sigmoid here for 0-1, but linear works with MSE for this demo
-    Linear* fc2 = new Linear(hidden_dim, output_dim);
-    randomize(fc2->W); randomize(fc2->b);
-    model.add(fc2);
+    std::vector<BenchmarkResult> results;
+    results.push_back(run_benchmark(KernelMode::NAIVE, "Naive", X, Y, epochs));
+    results.push_back(run_benchmark(KernelMode::SHARED, "Shared Memory", X, Y, epochs));
+    results.push_back(run_benchmark(KernelMode::FUSED, "Fused Kernels", X, Y, epochs));
+    results.push_back(run_benchmark(KernelMode::WARP, "Warp Reduce", X, Y, epochs));
 
-    // ==========================================
-    // 3. Train
-    // ==========================================
-    float training_time = train(model, d_X, d_Y, 10000, 0.1f);
-    std::cout << "\nTraining Time: " << training_time << " seconds\n";
+    write_results_to_json(results, "benchmark_results_xor.json");
 
-    // ==========================================
-    // 4. Verify Results
-    // ==========================================
-    std::cout << "\n=== Final Predictions ===\n";
-    Matrix final_preds = model.forward(d_X);
-    
-    std::vector<float> res;
-    final_preds.copyToHost(res);
-    // Add this header at the top
-    std::cout << std::fixed << std::setprecision(9); // Force 9 decimal places
-
-    std::cout << "Input (0, 0) -> Pred: " << res[0] << " (Target: 0)\n";
-    std::cout << "Input (0, 1) -> Pred: " << res[1] << " (Target: 1)\n";
-    std::cout << "Input (1, 0) -> Pred: " << res[2] << " (Target: 1)\n";
-    std::cout << "Input (1, 1) -> Pred: " << res[3] << " (Target: 0)\n";
-
-    // Cleanup
-    d_X.free(); d_Y.free();
-
+    X.free(); Y.free();
     return 0;
 }

@@ -1,10 +1,21 @@
 #pragma once
 #include "utils.cuh"
-#include "kernels.cuh"
+#include "kernels_variants.cuh"
+
+// Helper macro for dispatching
+#define DISPATCH(func, ...) \
+    switch(mode) { \
+        case KernelMode::NAIVE: naive::func(__VA_ARGS__); break; \
+        case KernelMode::SHARED: shared::func(__VA_ARGS__); break; \
+        case KernelMode::FUSED: fused::func(__VA_ARGS__); break; \
+        case KernelMode::WARP: warp_opt::func(__VA_ARGS__); break; \
+    }
 
 // Abstract Base Class
 class Layer {
 public:
+    KernelMode mode;
+    Layer(KernelMode m = KernelMode::NAIVE) : mode(m) {}
     virtual ~Layer() {}
     virtual Matrix forward(const Matrix& input) = 0;
     virtual Matrix backward(const Matrix& d_output, float learning_rate) = 0;
@@ -21,7 +32,8 @@ public:
     Matrix output;
     Matrix d_input;
 
-    Linear(int input_features, int output_features) {
+    Linear(int input_features, int output_features, KernelMode m = KernelMode::NAIVE) 
+        : Layer(m) {
         W.allocate(input_features, output_features);
         b.allocate(1, output_features);
     }
@@ -42,12 +54,7 @@ public:
             output.allocate(input.rows, W.cols);
         }
         
-        // Fused MatMul + Bias
-        matrixMultiplyWithBias(input, W, b, output);
-
-        // UnFused version:
-        // matrixMultiply(input, W, output);
-        // addBias(output, b);
+        DISPATCH(matrixMultiplyWithBias, input, W, b, output);
         
         return output;
     }
@@ -59,12 +66,12 @@ public:
         if (!dW.allocated) dW.allocate(W.rows, W.cols);
         if (!db.allocated) db.allocate(b.rows, b.cols);
 
-        matrixMultiplyTransposeA(input_cache, d_output, dW);
-        computeBiasGradient(d_output, db);
-        matrixMultiplyTransposeB(d_output, W, d_input);
+        DISPATCH(matrixMultiplyTransposeA, input_cache, d_output, dW);
+        DISPATCH(computeBiasGradient, d_output, db);
+        DISPATCH(matrixMultiplyTransposeB, d_output, W, d_input);
 
-        updateWeights(W, dW, learning_rate);
-        updateWeights(b, db, learning_rate);
+        DISPATCH(updateWeights, W, dW, learning_rate);
+        DISPATCH(updateWeights, b, db, learning_rate);
 
         return d_input;
     }
@@ -79,6 +86,7 @@ public:
     Matrix output;
     Matrix d_input;
 
+    ReLU(KernelMode m = KernelMode::NAIVE) : Layer(m) {}
     ~ReLU() { output.free(); d_input.free(); }
 
     Matrix forward(const Matrix& input) override {
@@ -89,7 +97,7 @@ public:
             output.allocate(input.rows, input.cols);
         }
 
-        reluActivation(input, output);
+        DISPATCH(reluActivation, input, output);
         return output;
     }
 
@@ -97,7 +105,7 @@ public:
         if (!d_input.allocated || d_input.rows != d_output.rows || d_input.cols != d_output.cols) 
             d_input.allocate(d_output.rows, d_output.cols);
 
-        reluBackward(d_output, input_cache, d_input);
+        DISPATCH(reluBackward, d_output, input_cache, d_input);
         return d_input;
     }
 };
@@ -110,6 +118,7 @@ public:
     Matrix output;
     Matrix d_input;
 
+    SoftmaxCrossEntropy(KernelMode m = KernelMode::NAIVE) : Layer(m) {}
     ~SoftmaxCrossEntropy() { output.free(); d_input.free(); }
 
     Matrix forward(const Matrix& input) override {
@@ -118,7 +127,7 @@ public:
             output.allocate(input.rows, input.cols);
         }
         
-        softmaxActivation(input, output);
+        DISPATCH(softmaxActivation, input, output);
         return output;
     }
 
@@ -128,7 +137,7 @@ public:
         
         // For Softmax+CE, gradient is (Pred - Target)
         // We reuse the generic subtract/MSE gradient kernel
-        computeMSEGradient(output, target_labels, d_input); 
+        DISPATCH(computeMSEGradient, output, target_labels, d_input); 
         
         return d_input;
     }
@@ -146,7 +155,8 @@ public:
     Matrix d_input;
     Matrix dZ_temp; // Temporary storage for dZ (gradient before ReLU)
 
-    LinearReLU(int input_features, int output_features) {
+    LinearReLU(int input_features, int output_features, KernelMode m = KernelMode::NAIVE) 
+        : Layer(m) {
         W.allocate(input_features, output_features);
         b.allocate(1, output_features);
     }
@@ -167,7 +177,7 @@ public:
         }
         
         // Fused MatMul + Bias + ReLU
-        matrixMultiplyWithBiasAndReLU(input, W, b, output);
+        DISPATCH(matrixMultiplyWithBiasAndReLU, input, W, b, output);
         
         return output;
     }
@@ -184,15 +194,15 @@ public:
 
         // 1. ReLU Backward: dZ = d_output * (output > 0)
         // We use 'output' (which is A) as the proxy for Z. A > 0 implies Z > 0.
-        reluBackward(d_output, output, dZ_temp);
+        DISPATCH(reluBackward, d_output, output, dZ_temp);
 
         // 2. Linear Backward using dZ_temp
-        matrixMultiplyTransposeA(input_cache, dZ_temp, dW);
-        computeBiasGradient(dZ_temp, db);
-        matrixMultiplyTransposeB(dZ_temp, W, d_input);
+        DISPATCH(matrixMultiplyTransposeA, input_cache, dZ_temp, dW);
+        DISPATCH(computeBiasGradient, dZ_temp, db);
+        DISPATCH(matrixMultiplyTransposeB, dZ_temp, W, d_input);
 
-        updateWeights(W, dW, learning_rate);
-        updateWeights(b, db, learning_rate);
+        DISPATCH(updateWeights, W, dW, learning_rate);
+        DISPATCH(updateWeights, b, db, learning_rate);
 
         return d_input;
     }
