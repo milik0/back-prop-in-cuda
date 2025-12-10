@@ -7,35 +7,35 @@ SRC_DIR = src
 OBJ_DIR = obj
 BIN_DIR = bin
 
-SRCS = $(SRC_DIR)/main.cu $(SRC_DIR)/kernels.cu
+SRCS = $(SRC_DIR)/main.cu $(SRC_DIR)/kernels.cu $(SRC_DIR)/kernels_naive.cu $(SRC_DIR)/kernels_shared.cu $(SRC_DIR)/kernels_fused.cu $(SRC_DIR)/kernels_warp.cu
 OBJS = $(patsubst $(SRC_DIR)/%.cu,$(OBJ_DIR)/%.o,$(SRCS))
 TARGET = $(BIN_DIR)/mlp_test
 
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-        @mkdir -p $(BIN_DIR)
-        $(NVCC) $(NVCC_FLAGS) -o $@ $^
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
 $(OBJ_DIR)/%.o: $(SRC_DIR)/%.cu
-        @mkdir -p $(OBJ_DIR)
-        $(NVCC) $(NVCC_FLAGS) -c $< -o $@
+	@mkdir -p $(OBJ_DIR)
+	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
 
 $(BIN_DIR)/mlp_xor_test: $(OBJ_DIR)/main_xor.o $(OBJ_DIR)/kernels.o
-        @mkdir -p $(BIN_DIR)
-        $(NVCC) $(NVCC_FLAGS) -o $@ $^
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
 $(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(OBJ_DIR)/kernels.o
-        @mkdir -p $(BIN_DIR)
-        $(NVCC) $(NVCC_FLAGS) -o $@ $^
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
 xor: $(BIN_DIR)/mlp_xor_test
-        @echo "Building MLP XOR Test..."
-        ./$(BIN_DIR)/mlp_xor_test
+	@echo "Building MLP XOR Test..."
+	./$(BIN_DIR)/mlp_xor_test
 
 mnist: $(BIN_DIR)/mlp_mnist_test
-        @echo "Building MLP XOR Test..."
-        ./$(BIN_DIR)/mlp_mnist_test
+	@echo "Building MLP XOR Test..."
+	./$(BIN_DIR)/mlp_mnist_test
 
 
 # Benchmark targets
