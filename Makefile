@@ -29,6 +29,13 @@ $(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(OBJ_DIR)/kernels.o
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
+$(BIN_DIR)/mlp_fashion_mnist_test: $(OBJ_DIR)/main_fashion_mnist.o $(OBJ_DIR)/kernels.o
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
+$(BIN_DIR)/mlp_breast_cancer_test: $(OBJ_DIR)/main_breast_cancer.o $(OBJ_DIR)/kernels.o
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
+
 xor: $(BIN_DIR)/mlp_xor_test
 	@echo "Building MLP XOR Test..."
 	./$(BIN_DIR)/mlp_xor_test
