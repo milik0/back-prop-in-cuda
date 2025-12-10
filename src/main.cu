@@ -7,6 +7,14 @@
 #include <iomanip>
 #include <algorithm>
 #include <chrono>
+#include <fstream>
+
+struct BenchmarkResult {
+    std::string name;
+    float avg_forward_ms;
+    float avg_backward_ms;
+    float total_time_s;
+};
 
 // Helper: Calculate Accuracy on CPU
 float calculate_accuracy(Matrix& preds, Matrix& targets) {
@@ -53,7 +61,7 @@ void init_xavier(Matrix& m) {
     m.copyFromHost(host_data);
 }
 
-void run_benchmark(KernelMode mode, std::string name, Matrix& full_X, Matrix& full_Y, int N_SAMPLES) {
+BenchmarkResult run_benchmark(KernelMode mode, std::string name, Matrix& full_X, Matrix& full_Y, int N_SAMPLES) {
     std::cout << "\n========================================\n";
     std::cout << "Running Benchmark: " << name << "\n";
     std::cout << "========================================\n";
@@ -141,13 +149,35 @@ void run_benchmark(KernelMode mode, std::string name, Matrix& full_X, Matrix& fu
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
     
-    std::cout << "Total Time: " << elapsed.count() << " s\n";
-    std::cout << "Average Forward per Batch: " << total_forward_ms_all / (epochs * num_batches) << " ms\n";
-    std::cout << "Average Backward per Batch: " << total_backward_ms_all / (epochs * num_batches) << " ms\n";
+    float avg_fwd = total_forward_ms_all / (epochs * num_batches);
+    float avg_bwd = total_backward_ms_all / (epochs * num_batches);
+    float total_time = elapsed.count();
+
+    std::cout << "Total Time: " << total_time << " s\n";
+    std::cout << "Average Forward per Batch: " << avg_fwd << " ms\n";
+    std::cout << "Average Backward per Batch: " << avg_bwd << " ms\n";
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));
     batch_X.free(); batch_Y.free();
+
+    return {name, avg_fwd, avg_bwd, total_time};
+}
+
+void write_results_to_json(const std::vector<BenchmarkResult>& results, const std::string& filename) {
+    std::ofstream out(filename);
+    out << "[\n";
+    for (size_t i = 0; i < results.size(); ++i) {
+        out << "  {\n";
+        out << "    \"name\": \"" << results[i].name << "\",\n";
+        out << "    \"avg_forward_ms\": " << results[i].avg_forward_ms << ",\n";
+        out << "    \"avg_backward_ms\": " << results[i].avg_backward_ms << ",\n";
+        out << "    \"total_time_s\": " << results[i].total_time_s << "\n";
+        out << "  }" << (i < results.size() - 1 ? "," : "") << "\n";
+    }
+    out << "]\n";
+    out.close();
+    std::cout << "Benchmark results written to " << filename << "\n";
 }
 
 int main() {
@@ -156,25 +186,14 @@ int main() {
     int N_SAMPLES = 60000;
     loadMNIST("/root/khaled-sans-bapt/back-prop-in-cuda/data/train-images-idx3-ubyte", "/root/khaled-sans-bapt/back-prop-in-cuda/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
 
-    run_benchmark(KernelMode::NAIVE, "1) Naive Implementation", full_X, full_Y, N_SAMPLES);
-    run_benchmark(KernelMode::SHARED, "2) Shared Memory (Tiled)", full_X, full_Y, N_SAMPLES);
-    run_benchmark(KernelMode::FUSED, "3) Fused Kernels", full_X, full_Y, N_SAMPLES);
-    run_benchmark(KernelMode::WARP, "4) Warp Reduce Pattern", full_X, full_Y, N_SAMPLES);
+    std::vector<BenchmarkResult> results;
+    results.push_back(run_benchmark(KernelMode::NAIVE, "Naive", full_X, full_Y, N_SAMPLES));
+    results.push_back(run_benchmark(KernelMode::SHARED, "Shared Memory", full_X, full_Y, N_SAMPLES));
+    results.push_back(run_benchmark(KernelMode::FUSED, "Fused Kernels", full_X, full_Y, N_SAMPLES));
+    results.push_back(run_benchmark(KernelMode::WARP, "Warp Reduce", full_X, full_Y, N_SAMPLES));
+
+    write_results_to_json(results, "benchmark_results.json");
 
     full_X.free(); full_Y.free();
     return 0;
 }
-
-
-
-
-
-// 
-//     // Cleanup Test Data
-//     test_X.free(); test_Y.free();
-//     // Cleanup
-//     full_X.free(); full_Y.free();
-//     batch_X.free(); batch_Y.free();
-// 
-//     return 0;
-// }
