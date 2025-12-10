@@ -12,7 +12,7 @@ from pytorch_mlp import BreastCancerMLP, train_breast_cancer
 # Configuration
 CUDA_EXECUTABLE = "../bin/mlp_breast_cancer_test"
 RESULTS_DIR = "./results"
-DATA_PATH = "../data"  # Path to ubyte files
+DATA_PATH = "~/data/bcw"  # Path to ubyte files
 IMAGE_FILE = "bcw_original-images-ubyte"
 LABEL_FILE = "bcw_original-labels-ubyte"
 EPOCHS = 50
