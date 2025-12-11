@@ -1,7 +1,8 @@
 # Path to the virtual environment python
 PYTHON := $(CURDIR)/.venv/bin/python
 NVCC := nvcc
-NVCC_FLAGS := -arch=sm_75 -O3
+NVCC_FLAGS := -arch=sm_61 -O3 -std=c++17 -ccbin g++-10
+
 
 SRC_DIR = src
 OBJ_DIR = obj
