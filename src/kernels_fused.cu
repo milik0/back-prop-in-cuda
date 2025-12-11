@@ -117,4 +117,4 @@ void matrixMultiplyWithBias(const Matrix& A, const Matrix& B, const Matrix& b, M
     CHECK_CUDA(cudaGetLastError());
 }
 
-} // namespace fused
+} 

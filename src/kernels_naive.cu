@@ -195,4 +195,4 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-} // namespace naive
+}

@@ -4,9 +4,6 @@
 
 #define TILE_SIZE 16
 
-// CUDA Kernel for Matrix Multiplication
-// C = A * B
-// A: m x k, B: k x n, C: m x n
 __global__ void matmul_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -50,8 +47,6 @@ __global__ void matmul_kernel(const float* A, const float* B, float* C, int m, i
 }
 
 void matrixMultiply(const Matrix& A, const Matrix& B, Matrix& C) {
-    // A: m x k, B: k x n
-    // C must be m x n
     if (A.cols != B.rows) {
         std::cerr << "Error: Matrix dimensions mismatch for multiplication." << std::endl;
         exit(EXIT_FAILURE);
@@ -68,8 +63,6 @@ void matrixMultiply(const Matrix& A, const Matrix& B, Matrix& C) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// CUDA Kernel for Matrix Multiplication with Bias
-// C = A * B + b
 __global__ void matmul_with_bias_kernel(const float* A, const float* B, const float* b, float* C, int m, int k, int n) {
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -133,8 +126,6 @@ void matrixMultiplyWithBias(const Matrix& A, const Matrix& B, const Matrix& b, M
     CHECK_CUDA(cudaGetLastError());
 }
 
-// CUDA Kernel for Matrix Multiplication with Bias and ReLU
-// C = ReLU(A * B + b)
 __global__ void matmul_with_bias_relu_kernel(const float* A, const float* B, const float* b, float* C, int m, int k, int n) {
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -199,8 +190,6 @@ void matrixMultiplyWithBiasAndReLU(const Matrix& A, const Matrix& B, const Matri
     CHECK_CUDA(cudaGetLastError());
 }
 
-// CUDA Kernel for Adding Bias
-// Y: m x n, b: 1 x n
 // Each row of Y corresponds to a sample, we add b to each sample.
 __global__ void add_bias_kernel(float* Y, const float* b, int m, int n) {
     int bx = blockIdx.x;
@@ -244,7 +233,6 @@ void addBias(Matrix& Y, const Matrix& b) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// CUDA Kernel for ReLU
 __global__ void relu_kernel(const float* Z, float* A, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -265,7 +253,6 @@ void reluActivation(const Matrix& Z, Matrix& A) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// CUDA Kernel for Softmax (Naive implementation)
 // This is not optimized. Optimized version would use shared memory reductions.
 __global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
     int row = blockIdx.x * blockDim.x + threadIdx.x;
@@ -304,12 +291,7 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
 // 1. Matrix Multiplication with Transpose A: C = A^T * B
-// Used for: dW = X^T * dZ
-// Dimensions: A is (m x k), B is (m x n), C is (k x n)
-// Note: Inner dimension for mult is 'm' (rows of A, rows of B)
-// -----------------------------------------------------------
 #define TILE_SIZE 16
 
 __global__ void matmul_transposeA_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
@@ -358,9 +340,6 @@ __global__ void matmul_transposeA_kernel(const float* A, const float* B, float* 
 }
 
 void matrixMultiplyTransposeA(const Matrix& A, const Matrix& B, Matrix& C) {
-    // A: m x k (we treat as k x m), B: m x n
-    // Output C: k x n
-    // Validation: A.rows must match B.rows for (A^T * B) to work
     if (A.rows != B.rows) {
         std::cerr << "Error: Dimension mismatch for TransposeA Mult." << std::endl;
         exit(EXIT_FAILURE);
@@ -374,14 +353,6 @@ void matrixMultiplyTransposeA(const Matrix& A, const Matrix& B, Matrix& C) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
-// 2. Matrix Multiplication with Transpose B: C = A * B^T
-// -----------------------------------------------------------
-// 2. Matrix Multiplication with Transpose B: C = A * B^T
-// Used for: d_input = dZ * W^T
-// Dimensions: A is (m x k), B is (n x k), C is (m x n)
-// Note: Inner dimension is 'k' (cols of A, cols of B)
-// -----------------------------------------------------------
 __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* C, int m, int k, int n) {
     int bx = blockIdx.x;
     int by = blockIdx.y;
@@ -406,9 +377,6 @@ __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* 
         else
             As[ty][tx] = 0.0f;
 
-        // Load B: row `bx*TILE + ty` (part of col of C), col `t*TILE + tx` (part of k)
-        // We want B[col][k].
-        // We load B rows corresponding to C cols.
         int B_row = bx * TILE_SIZE + ty; 
         int B_col = t * TILE_SIZE + tx;
         
@@ -421,9 +389,6 @@ __global__ void matmul_transposeB_kernel(const float* A, const float* B, float* 
         __syncthreads();
 
         for (int i = 0; i < TILE_SIZE; ++i) {
-            // sum += A[row][k] * B[col][k]
-            // A[row][k] is As[ty][i]
-            // B[col][k] is Bs[tx][i] (since we loaded B_row corresponding to ty, but we need B_row corresponding to tx)
             sum += As[ty][i] * Bs[tx][i];
         }
         __syncthreads();
@@ -449,11 +414,9 @@ void matrixMultiplyTransposeB(const Matrix& A, const Matrix& B, Matrix& C) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
 // 3. Bias Gradient: db = sum(dZ, axis=0)
 // Collapses batch dimension. 
 // Optimized using Shared Memory Reduction to reduce atomicAdd contention.
-// -----------------------------------------------------------
 
 __device__ inline float warpReduceSum(float val) {
     for (int offset = 16; offset > 0; offset /= 2)
@@ -483,10 +446,6 @@ __global__ void bias_grad_kernel(const float* dZ, float* db, int m, int n) {
     __syncthreads();
 
     // 2. Transpose and Reduce
-    // We want to sum along columns (reduce rows).
-    // Thread (tx, ty) reads sdata[tx][ty].
-    // tx becomes the row index (0..31), ty becomes the column index (0..31).
-    // Warp `ty` handles column `ty`.
     
     float val = sdata[tx][ty];
     
@@ -512,10 +471,8 @@ void computeBiasGradient(const Matrix& dY, Matrix& db) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
 // 4. ReLU Backward: dX = dY * (Z > 0 ? 1 : 0)
 // Element-wise multiplication with derivative
-// -----------------------------------------------------------
 __global__ void relu_backward_kernel(const float* dY, const float* Z, float* dX, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -532,9 +489,7 @@ void reluBackward(const Matrix& dY, const Matrix& Z, Matrix& dX) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
 // 5. Update Weights: W = W - lr * dW
-// -----------------------------------------------------------
 __global__ void update_weights_kernel(float* W, const float* dW, float lr, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -551,9 +506,7 @@ void updateWeights(Matrix& W, const Matrix& dW, float lr) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-// -----------------------------------------------------------
 // 6. MSE Gradient: d_loss = Prediction - Target
-// -----------------------------------------------------------
 __global__ void mse_gradient_kernel(const float* P, const float* Y, float* d_loss, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {
@@ -569,45 +522,3 @@ void computeMSEGradient(const Matrix& P, const Matrix& Y, Matrix& d_loss) {
     mse_gradient_kernel<<<blocks, threads>>>(P.data, Y.data, d_loss.data, size);
     CHECK_CUDA(cudaGetLastError());
 }
-
-// -----------------------------------------------------------
-// Softmax Activation (Numerically Stable)
-// -----------------------------------------------------------
-/*__global__ void softmax_kernel(const float* Z, float* A, int m, int n) {
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
-    if (row < m) {
-        // 1. Find max for stability
-        float max_val = -FLT_MAX;
-        for (int i = 0; i < n; ++i) {
-            if (Z[row * n + i] > max_val) max_val = Z[row * n + i];
-        }
-
-        // 2. Compute exponentials and sum
-        float sum_exp = 0.0f;
-        for (int i = 0; i < n; ++i) {
-            float val = expf(Z[row * n + i] - max_val);
-            A[row * n + i] = val; // Store temporarily
-            sum_exp += val;
-        }
-
-        // 3. Normalize
-        for (int i = 0; i < n; ++i) {
-            A[row * n + i] /= sum_exp;
-        }
-    }
-}*/
-
-// void softmaxActivation(const Matrix& Z, Matrix& A) {
-//     int threadsPerBlock = 256;
-//     // One thread per ROW (sample), assuming n is small (10 classes)
-//     int blocksPerGrid = (Z.rows + threadsPerBlock - 1) / threadsPerBlock;
-//     softmax_kernel<<<blocksPerGrid, threadsPerBlock>>>(Z.data, A.data, Z.rows, Z.cols);
-//     CHECK_CUDA(cudaGetLastError());
-// }
-
-// -----------------------------------------------------------
-// Cross Entropy Gradient: dZ = P - Y
-// If we use Softmax + Cross Entropy, the gradient simplifies to just (Pred - Target)
-// We can reuse the "mse_gradient_kernel" logic or rename it for clarity.
-// -----------------------------------------------------------
-// (You can reuse the kernel you added for MSE, mathematically it's P - Y for both!)

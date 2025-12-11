@@ -54,7 +54,6 @@ __device__ float warpReduceMax(float val) {
 
 __global__ void softmax_warp_kernel(const float* Z, float* A, int m, int n) {
     int row = blockIdx.x * blockDim.y + threadIdx.y;
-    // Assuming blockDim.x = 32 (warp size)
     // Each warp handles one row.
     // threadIdx.x is the lane index.
     
@@ -93,4 +92,4 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
     CHECK_CUDA(cudaGetLastError());
 }
 
-} // namespace warp_opt
+}

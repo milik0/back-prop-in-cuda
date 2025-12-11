@@ -106,24 +106,6 @@ __global__ void matmul_transposeA_kernel(const float* A, const float* B, float* 
     // Loop over inner dimension m
     for (int t = 0; t < (m + TILE_SIZE - 1) / TILE_SIZE; ++t) {
         
-        // Load A^T tile (which is A tile transposed conceptually, or just load A properly)
-        // We want A^T[row][k_idx] -> A[k_idx][row]
-        // Here 'row' is the row in C, which is the col in A.
-        // 'k_idx' (inner loop) corresponds to row in A.
-        
-        // Loading A tile:
-        // We need A[t*TILE + ...][row]
-        // Let's map threads to load A.
-        // A is m x k.
-        // We want to load a tile of A that covers rows t*TILE to (t+1)*TILE
-        // and cols corresponding to 'row' (which is by*TILE + ty).
-        // But 'row' varies with ty.
-        
-        // Standard approach for C = A^T * B:
-        // Tile in A is (t*TILE, by*TILE) of size TILE x TILE.
-        // We load A[t*TILE + ty][by*TILE + tx] into As[ty][tx]?
-        // Let's follow kernels.cu logic exactly.
-        
         int A_row = t * TILE_SIZE + ty;
         int A_col = by * TILE_SIZE + tx;
         
@@ -143,19 +125,6 @@ __global__ void matmul_transposeA_kernel(const float* A, const float* B, float* 
         __syncthreads();
 
         for (int i = 0; i < TILE_SIZE; ++i) {
-            // C[row][col] += A^T[row][i] * B[i][col]
-            //              = A[i][row] * B[i][col]
-            // In shared mem:
-            // As loaded A[t*TILE + ty][by*TILE + tx]
-            // We want A[t*TILE + i][row].
-            // 'row' corresponds to by*TILE + ty.
-            // So we need As[i][ty].
-            
-            // Bs loaded B[t*TILE + ty][bx*TILE + tx]
-            // We want B[t*TILE + i][col].
-            // 'col' corresponds to bx*TILE + tx.
-            // So we need Bs[i][tx].
-            
             sum += As[i][ty] * Bs[i][tx];
         }
         __syncthreads();
@@ -259,4 +228,4 @@ void softmaxActivation(const Matrix& Z, Matrix& A) {
     naive::softmaxActivation(Z, A);
 }
 
-} // namespace shared
+}

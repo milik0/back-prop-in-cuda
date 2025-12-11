@@ -21,9 +21,7 @@ public:
     virtual Matrix backward(const Matrix& d_output, float learning_rate) = 0;
 };
 
-// -----------------------------------------------------------
 // Linear Layer
-// -----------------------------------------------------------
 class Linear : public Layer {
 public:
     Matrix W, b;
@@ -49,7 +47,6 @@ public:
     Matrix forward(const Matrix& input) override {
         input_cache = input; 
 
-        // FIX: Check if batch size changed, re-allocate if necessary
         if (!output.allocated || output.rows != input.rows || output.cols != W.cols) {
             output.allocate(input.rows, W.cols);
         }
@@ -77,9 +74,7 @@ public:
     }
 };
 
-// -----------------------------------------------------------
 // ReLU Layer
-// -----------------------------------------------------------
 class ReLU : public Layer {
 public:
     Matrix input_cache;
@@ -92,7 +87,6 @@ public:
     Matrix forward(const Matrix& input) override {
         input_cache = input;
         
-        // FIX: Re-allocate if dimensions change
         if (!output.allocated || output.rows != input.rows || output.cols != input.cols) {
             output.allocate(input.rows, input.cols);
         }
@@ -110,9 +104,7 @@ public:
     }
 };
 
-// -----------------------------------------------------------
 // Softmax Cross Entropy Layer
-// -----------------------------------------------------------
 class SoftmaxCrossEntropy : public Layer {
 public:
     Matrix output;
@@ -143,9 +135,7 @@ public:
     }
 };
 
-// -----------------------------------------------------------
 // Linear Layer with Fused ReLU
-// -----------------------------------------------------------
 class LinearReLU : public Layer {
 public:
     Matrix W, b;
