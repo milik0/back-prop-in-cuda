@@ -32,7 +32,7 @@ $(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(KERNEL_OBJS)
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
-$(BIN_DIR)/mlp_mnist_train_test: $(OBJ_DIR)/main_mnist.o $(OBJ_DIR)/kernels.o
+$(BIN_DIR)/mlp_mnist_train_test: $(OBJ_DIR)/main_mnist.o $(KERNEL_OBJS)
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
