@@ -27,7 +27,11 @@ $(BIN_DIR)/mlp_xor_test: $(OBJ_DIR)/main_xor.o $(OBJ_DIR)/kernels.o
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
-$(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(OBJ_DIR)/kernels.o
+$(BIN_DIR)/mlp_mnist_test: $(OBJ_DIR)/main.o $(KERNEL_OBJS)
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) $(NVCC_FLAGS) -o $@ $^
+
+$(BIN_DIR)/mlp_mnist_train_test: $(OBJ_DIR)/main_mnist.o $(OBJ_DIR)/kernels.o
 	@mkdir -p $(BIN_DIR)
 	$(NVCC) $(NVCC_FLAGS) -o $@ $^
 
@@ -56,7 +60,7 @@ breast-cancer: $(BIN_DIR)/mlp_breast_cancer_test
 
 
 # Benchmark targets
-benchmark-mnist: $(TARGET)
+benchmark-mnist: $(BIN_DIR)/mlp_mnist_train_test
 	@echo "Running MNIST benchmark..."
 	cd benchmark && $(PYTHON) benchmark_mnist.py
 benchmark-xor: $(BIN_DIR)/mlp_xor_test

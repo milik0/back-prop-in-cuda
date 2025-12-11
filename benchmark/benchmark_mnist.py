@@ -12,7 +12,7 @@ from pytorch_mlp import MLP, train_mnist
 
 # Configuration
 DATA_PATH = os.path.expanduser("~/data/mnist/")  # Adjust if needed
-CUDA_EXECUTABLE = "../bin/mlp_test"
+CUDA_EXECUTABLE = "../bin/mlp_mnist_train_test"
 RESULTS_DIR = "./results"
 EPOCHS = 5
 BATCH_SIZE = 64

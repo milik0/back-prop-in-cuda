@@ -1,0 +1,26 @@
+[
+  {
+    "name": "Naive",
+    "avg_forward_ms": 0.0290891,
+    "avg_backward_ms": 0.0782795,
+    "total_time_s": 0.00388027
+  },
+  {
+    "name": "Shared Memory",
+    "avg_forward_ms": 0.0288715,
+    "avg_backward_ms": 0.0583979,
+    "total_time_s": 0.00314496
+  },
+  {
+    "name": "Fused Kernels",
+    "avg_forward_ms": 0.0207189,
+    "avg_backward_ms": 0.0496512,
+    "total_time_s": 0.00255726
+  },
+  {
+    "name": "Warp Reduce",
+    "avg_forward_ms": 0.0172267,
+    "avg_backward_ms": 0.0494027,
+    "total_time_s": 0.00245094
+  }
+]
