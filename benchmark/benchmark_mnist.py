@@ -11,7 +11,7 @@ import torch
 from pytorch_mlp import MLP, train_mnist
 
 # Configuration
-DATA_PATH = os.path.expanduser("/root/khaled-sans-bapt/back-prop-in-cuda/data/")  # Adjust if needed
+DATA_PATH = os.path.expanduser("~/data/mnist/")  # Adjust if needed
 CUDA_EXECUTABLE = "../bin/mlp_test"
 RESULTS_DIR = "./results"
 EPOCHS = 5
@@ -43,6 +43,20 @@ def benchmark_cuda_mnist():
         
         # Total wall-clock time
         total_time = time.time() - start_time
+        
+        # Debug: Check if there was an error
+        if result.returncode != 0:
+            print(f"Error: CUDA executable exited with code {result.returncode}")
+            print(f"stderr: {result.stderr}")
+            if result.stdout:
+                print(f"stdout: {result.stdout}")
+            return None
+        
+        # Debug: Check if we got any output
+        if not result.stdout.strip():
+            print(f"Warning: No output from CUDA executable")
+            print(f"stderr: {result.stderr}")
+            return None
         
         # Parse output for accuracy and internal timing info
         output_lines = result.stdout.split('\n')
