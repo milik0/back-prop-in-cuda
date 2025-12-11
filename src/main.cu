@@ -184,7 +184,7 @@ int main() {
     std::cout << "Loading MNIST Data...\n";
     Matrix full_X, full_Y;
     int N_SAMPLES = 60000;
-    loadMNIST("/root/khaled-sans-bapt/back-prop-in-cuda/data/train-images-idx3-ubyte", "/root/khaled-sans-bapt/back-prop-in-cuda/data/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
+    loadMNIST("/root/khaled/data/mnist/train-images-idx3-ubyte", "/root/khaled/data/mnist/train-labels-idx1-ubyte", full_X, full_Y, N_SAMPLES);
 
     std::vector<BenchmarkResult> results;
     results.push_back(run_benchmark(KernelMode::NAIVE, "Naive", full_X, full_Y, N_SAMPLES));
