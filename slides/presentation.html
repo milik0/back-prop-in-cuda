@@ -217,13 +217,13 @@
 
         <div class="slide" id="slide-5">
             <h2>Convergence Comparison</h2>
-            <p>Loss Trajectory: Our Custom Model vs PyTorch</p>
+            <p id="convergenceSubtitle">Metric Trajectory: Our Custom Model vs PyTorch</p>
             
             <div class="btn-group">
-                <button class="btn active" onclick="updateConvergence('xor')">XOR</button>
-                <button class="btn" onclick="updateConvergence('mnist')">MNIST</button>
-                <button class="btn" onclick="updateConvergence('fashion')">Fashion MNIST</button>
-                <button class="btn" onclick="updateConvergence('cancer')">Breast Cancer</button>
+                <button class="btn active" onclick="updateConvergence('xor')">XOR (Loss)</button>
+                <button class="btn" onclick="updateConvergence('mnist')">MNIST (Accuracy)</button>
+                <button class="btn" onclick="updateConvergence('fashion')">Fashion MNIST (Accuracy)</button>
+                <button class="btn" onclick="updateConvergence('cancer')">Breast Cancer (Accuracy)</button>
             </div>
 
             <div class="chart-wrapper" style="height: 450px;">
@@ -231,7 +231,7 @@
             </div>
             
             <div style="margin-top: 1rem; text-align: center; color: var(--text-muted);">
-                <em>Note: Both models converge to similar final loss values, validating the numerical correctness of our backpropagation implementation.</em>
+                <em>Note: Our CUDA implementation achieves comparable or superior convergence characteristics to PyTorch across all datasets.</em>
             </div>
         </div>
 
@@ -299,6 +299,7 @@
                         <li>Our Implementation: Optimized for Latency (fewer kernels, good for small data).</li>
                         <li>PyTorch/cuBLAS: Optimized for Throughput (maximum math efficiency, good for massive data).</li>
                     </ul>
+                </div>
             </div>
         </div>
 
@@ -395,36 +396,33 @@
         };
         const optimLabels = ['Naive', 'Shared Mem', 'Fused Kernels', 'Warp Reduce'];
 
-        // --- 4. Convergence Data ---
-        function generateLossCurve(start, end, steps, decay) {
-            let data = [];
-            for(let i=0; i<steps; i++) {
-                let val = end + (start - end) * Math.exp(-decay * i);
-                data.push(val);
-            }
-            return data;
-        }
-
+        // --- 4. Convergence Data (Updated with Real Data) ---
         const convergenceData = {
             xor: {
+                type: 'loss',
                 labels: [0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000],
                 cuda: [0.1921, 6.21e-14, 4.35e-14, 4.79e-14, 4.79e-14, 4.79e-14, 4.79e-14, 4.79e-14, 4.79e-14, 4.79e-14],
                 pytorch: [0.3536, 0.0873, 0.0078, 0.0001, 3.6e-06, 6.3e-08, 1.1e-09, 9.6e-11, 4.1e-11, 4.1e-11]
             },
             mnist: {
-                labels: Array.from({length: 20}, (_, i) => i + 1),
-                cuda: generateLossCurve(2.3, 0.05, 20, 0.3),
-                pytorch: generateLossCurve(2.3, 0.04, 20, 0.35)
+                type: 'accuracy',
+                labels: ["1", "2", "3", "4", "5"],
+                cuda: [93.04, 97.14, 98.11, 98.64, 99.08],
+                pytorch: [80.63, 89.91, 91.20, 92.06, 92.71]
             },
             fashion: {
-                labels: Array.from({length: 20}, (_, i) => i + 1),
-                cuda: generateLossCurve(2.3, 0.35, 20, 0.2),
-                pytorch: generateLossCurve(2.3, 0.32, 20, 0.22)
+                type: 'accuracy',
+                labels: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+                cuda: [65.03, 76.81, 81.39, 82.63, 82.96, 84.78, 85.42, 85.94, 86.21, 86.56],
+                pytorch: [74.01, 81.24, 82.75, 83.65, 84.34, 84.84, 85.18, 85.51, 85.75, 85.99]
             },
             cancer: {
-                labels: Array.from({length: 20}, (_, i) => i + 1),
-                cuda: generateLossCurve(0.68, 0.08, 20, 0.5),
-                pytorch: generateLossCurve(0.69, 0.07, 20, 0.55)
+                type: 'accuracy',
+                labels: ["0", "5", "10", "15", "20", "25", "30", "35", "40", "45"],
+                // Real data log is every 5 epochs
+                cuda: [93.75, 94.42, 93.97, 94.42, 94.87, 95.09, 95.98, 95.76, 96.43, 96.88],
+                // PyTorch data sampled at indices 0, 5, 10... to align with CUDA logs
+                pytorch: [79.02, 89.51, 91.29, 92.19, 92.63, 92.63, 93.30, 93.75, 94.20, 94.42]
             }
         };
 
@@ -526,10 +524,19 @@
             }
 
             const data = convergenceData[key];
+            const isLoss = data.type === 'loss';
+
+            // Update Labels and Data
             convergenceChart.data.labels = data.labels;
+            convergenceChart.data.datasets[0].label = isLoss ? 'PyTorch Loss' : 'PyTorch Accuracy';
             convergenceChart.data.datasets[0].data = data.pytorch;
+            convergenceChart.data.datasets[1].label = isLoss ? 'Our Model Loss' : 'Our Model Accuracy';
             convergenceChart.data.datasets[1].data = data.cuda;
-            convergenceChart.options.scales.y.type = key === 'xor' ? 'logarithmic' : 'linear';
+            
+            // Update Axis Scale and Title
+            convergenceChart.options.scales.y.type = isLoss ? 'logarithmic' : 'linear';
+            convergenceChart.options.scales.y.title.text = isLoss ? 'Loss Value' : 'Accuracy (%)';
+            
             convergenceChart.update();
         }
 
@@ -592,8 +599,6 @@
                     scales: { y: { beginAtZero: true } }
                 }
             });
-            // Initial load call is implicitly handled by chart creation with default XOR data, 
-            // but we call update to ensure text metrics are set.
             updateMainDashboard('xor');
 
             // --- 3. Convergence Chart ---
@@ -601,17 +606,17 @@
             convergenceChart = new Chart(ctxConv, {
                 type: 'line',
                 data: {
-                    labels: [],
+                    labels: [], // Populated by update
                     datasets: [
-                        { label: 'PyTorch Loss', borderColor: '#ef4444', borderWidth: 2, pointRadius: 2 },
-                        { label: 'Our Model Loss', borderColor: '#10b981', borderWidth: 2, pointRadius: 2, borderDash: [4,4] }
+                        { label: 'PyTorch', borderColor: '#ef4444', borderWidth: 2, pointRadius: 2 },
+                        { label: 'Our Model', borderColor: '#10b981', borderWidth: 2, pointRadius: 2, borderDash: [4,4] }
                     ]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
                     scales: {
-                        x: { title: {display: true, text: 'Epochs'} },
-                        y: { title: {display: true, text: 'Loss'}, type: 'linear' }
+                        x: { title: {display: true, text: 'Epochs / Steps'} },
+                        y: { title: {display: true, text: 'Metric'}, type: 'linear' }
                     }
                 }
             });
